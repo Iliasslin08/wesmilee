@@ -70,10 +70,10 @@ class DossierController extends Controller
             ] : null,
             'prochainRdv' => $dossier->patient->rendezVous()->with('docteur:id,name')
                 ->where('debut', '>=', now())->whereIn('statut', ['planifie', 'arrive'])->orderBy('debut')->first(),
-            'rdvAFixer' => \App\Models\RdvAFixer::where('patient_id', $dossier->patient_id)->where('statut', 'en_attente')
+            'rdvAFixerDossier' => \App\Models\RdvAFixer::where('patient_id', $dossier->patient_id)->where('statut', 'en_attente')
                 ->with('docteur:id,name', 'demandePar:id,name')->get(),
             'rendezVous' => $dossier->patient->rendezVous()->with('docteur:id,name')->latest('debut')->limit(10)->get(),
-            'catalogue' => CatalogueActe::where('actif', true)->orderBy('libelle')->get(),
+            'catalogue' => CatalogueActe::where('actif', true)->orderBy('libelle')->get()->each(fn ($c) => $voitFinance ? null : $c->makeHidden('prix_defaut')),
             'docteurs' => User::docteurs()->get(['id', 'name', 'specialite', 'taches_principales', 'fait_consultation', 'duree_rdv']),
             'antecedentsListe' => AccueilController::ANTECEDENTS,
             'radios' => $dossier->radios()->with(['documents:id,radio_id,nom_original', 'fairePar:id,name'])->get()
@@ -81,7 +81,7 @@ class DossierController extends Controller
             'typesRadio' => \App\Models\Radio::TYPES,
             'ordonnances' => $dossier->ordonnances()->with('docteur:id,name')->get(),
             'suggestionsOrdonnance' => \App\Models\Ordonnance::SUGGESTIONS,
-            'demandesRadio' => $dossier->demandesRadio()->where('statut', 'en_attente')->with('demandePar:id,name')->get(),
+            'demandesRadioDossier' => $dossier->demandesRadio()->where('statut', 'en_attente')->with('demandePar:id,name')->get(),
             'peut' => [
                 'identite' => $user->hasRole(Role::Reception),
                 'medical' => $user->hasRole(Role::Docteur),

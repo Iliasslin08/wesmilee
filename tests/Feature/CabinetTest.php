@@ -440,7 +440,7 @@ class CabinetTest extends TestCase
         // le docteur peut aussi envoyer le dossier à Ikram
         $this->actingAs($nassim)->post("/dossiers/{$dossier->id}/demandes-radio", ['type' => 'retro_alveolaire', 'notes' => '16, 26'])->assertRedirect();
         $this->actingAs($ikram)->get('/radiologie')->assertInertia(fn ($p) => $p->has('demandes', 1)->where('demandes.0.type', 'retro_alveolaire'));
-        $this->actingAs($nassim)->get("/dossiers/{$dossier->id}")->assertInertia(fn ($p) => $p->has('demandesRadio', 1)->has('radios', 1));
+        $this->actingAs($nassim)->get("/dossiers/{$dossier->id}")->assertInertia(fn ($p) => $p->has('demandesRadioDossier', 1)->has('radios', 1));
     }
 
     public function test_rdv_par_telephone_et_prochain_rdv_chez_un_autre_docteur(): void
@@ -471,6 +471,8 @@ class CabinetTest extends TestCase
         $this->actingAs($consult)->post("/dossiers/{$dossier->id}/prochain-rdv", ['mode' => 'reception', 'docteur_id' => $ortho->id, 'mission' => 'Bilan orthodontie', 'notes' => 'dans 2 semaines'])->assertRedirect();
         $af = \App\Models\RdvAFixer::firstOrFail();
         $this->actingAs($reception)->get('/agenda')->assertInertia(fn ($p) => $p->has('aFixer', 1)->where('rdvAFixer', 1));
+        // Le dossier avec un RDV à fixer s'ouvre sans écraser le compteur du menu (bug : page blanche)
+        $this->actingAs($reception)->get('/dossiers/'.\App\Models\Dossier::where('patient_id', \App\Models\RdvAFixer::first()->patient_id)->value('id'))->assertInertia(fn ($p) => $p->has('rdvAFixerDossier', 1)->where('rdvAFixer', 1));
         $this->actingAs($reception)->post('/agenda', ['patient_id' => $patient->id, 'a_fixer_id' => $af->id, 'docteur_id' => $ortho->id, 'mission' => 'Bilan orthodontie', 'date' => now()->addDays(14)->toDateString(), 'heure' => '11:00', 'duree' => 30])->assertSessionHasNoErrors();
         $this->assertSame('fixe', $af->fresh()->statut);
 
@@ -753,7 +755,7 @@ class CabinetTest extends TestCase
         $this->post('/mon-espace/nouveau', ['nom' => 'Alaoui', 'prenom' => 'Nadia', 'telephone' => '0655443322'])->assertRedirect('/mon-espace/dossier');
         $nadia = Patient::where('telephone', '0655443322')->sole();
         $this->assertTrue($nadia->fiche_a_completer);
-        $h = $this->getJson("/mon-espace/creneaux?motif=consultation&date=$jour")->assertOk()->json();
+        $h = $this->getJson("/mon-espace/creneaux?motif=consultation&date=$jour")->assertOk()->json("heures");
         $this->assertNotContains('10:00', $h);
         $this->assertContains('10:30', $h);
         // Contrôle réservé aux patients déjà soignés

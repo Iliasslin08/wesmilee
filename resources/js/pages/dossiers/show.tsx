@@ -158,7 +158,7 @@ type Props = {
     rendezVous: Rdv[];
     catalogue: Catalogue[];
     docteurs: User[];
-    rdvAFixer?: AFixer[];
+    rdvAFixerDossier?: AFixer[];
     carte?: { photo: number | null; lien: string } | null;
     equipeLabo?: MembreLabo[];
     antecedentsListe: Record<string, string>;
@@ -166,7 +166,7 @@ type Props = {
     typesRadio: Record<string, string>;
     ordonnances: Ordo[];
     suggestionsOrdonnance: LigneOrdo[];
-    demandesRadio: {
+    demandesRadioDossier: {
         id: number;
         type: string;
         notes: string | null;
@@ -320,10 +320,10 @@ export default function DossierShow(props: Props) {
                 </div>
             </div>
 
-            {props.demandesRadio.length > 0 && (
+            {props.demandesRadioDossier.length > 0 && (
                 <div className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900">
                     <ScanLine className="size-4" /> Radio demandée à la radiologie :{' '}
-                    {props.demandesRadio.map((d) => `${props.typesRadio[d.type] ?? d.type} (par ${d.demande_par?.name ?? '—'})`).join(', ')}
+                    {props.demandesRadioDossier.map((d) => `${props.typesRadio[d.type] ?? d.type} (par ${d.demande_par?.name ?? '—'})`).join(', ')}
                 </div>
             )}
             {alertes.length > 0 && (
@@ -425,7 +425,7 @@ export default function DossierShow(props: Props) {
             {onglet === 'plan' && <Plan {...props} onPapier={() => setOnglet('papier')} />}
             {onglet === 'papier' && <DossierPapier {...props} />}
             {onglet === 'seances' && <Seances seances={props.seances} />}
-            {onglet === 'dents' && <Dents {...props} />}
+            {onglet === 'dents' && <Dents {...props} onPlan={() => setOnglet('plan')} />}
             {onglet === 'medical' && <Medical {...props} />}
             {onglet === 'labo' && <Labo {...props} />}
             {onglet === 'paiements' && finance && <Paiements {...props} finance={finance} />}
@@ -439,7 +439,7 @@ export default function DossierShow(props: Props) {
                     patient={props.dossier.patient.nom_complet}
                     tous={props.peut.rdvTous}
                     miens={props.peut.envoyer ? props.peut.rdvMiens : null}
-                    aFixer={props.rdvAFixer ?? []}
+                    aFixer={props.rdvAFixerDossier ?? []}
                     dossierId={props.dossier.id}
                     docteurs={props.docteurs}
                     actes={props.actes}
@@ -459,7 +459,7 @@ export default function DossierShow(props: Props) {
                 <DemandeRadioForm
                     dossierId={dossier.id}
                     types={props.typesRadio}
-                    dejaEnvoyees={props.demandesRadio.map((d) => d.type)}
+                    dejaEnvoyees={props.demandesRadioDossier.map((d) => d.type)}
                     onDone={() => setDemRadio(false)}
                 />
             </Modal>
@@ -1655,13 +1655,47 @@ function Seances({ seances }: { seances: Seance[] }) {
 }
 
 /* ---------------- Schéma dentaire ---------------- */
-function Dents({ dents, etatsDents, dossier, peut }: Props) {
+function Dents(props: Props & { onPlan?: () => void }) {
+    const { dents, etatsDents, dossier, peut, actes, catalogue } = props;
     const [outil, setOutil] = useState('carie');
     // Un seul schéma, comme sur le dossier papier : dents définitives à l'extérieur, dents de lait à l'intérieur
     // Affichage immédiat, puis enregistrement (plusieurs clics rapides possibles)
     const [local, setLocal] = useState<Record<string, string>>({});
-    const vue = { ...dents, ...local };
+    // Ajouter un acte du catalogue sur une ou plusieurs dents (clic sur les dents)
+    const [acteChoisi, setActeChoisi] = useState<string | null>(null);
+    const [choix, setChoix] = useState<number[]>([]);
+    const [statutActe, setStatutActe] = useState<'a_faire' | 'fait'>('a_faire');
+    const [recherche, setRecherche] = useState('');
+    const [envoi, setEnvoi] = useState(false);
+    const vue: Record<string, string> = { ...dents, ...local, ...Object.fromEntries(acteChoisi ? choix.map((d) => [d, 'choisie']) : []) };
+    const ajouterActe = () => {
+        if (!acteChoisi) return;
+        const cat = catalogue.find((c) => c.libelle === acteChoisi);
+        setEnvoi(true);
+        router.post(
+            `/dossiers/${dossier.id}/actes`,
+            {
+                catalogue_acte_id: cat ? String(cat.id) : '',
+                libelle: acteChoisi,
+                dents: [...choix].sort((a, b) => a - b).join(', '),
+                statut: statutActe,
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setActeChoisi(null);
+                    setChoix([]);
+                },
+                onFinish: () => setEnvoi(false),
+            },
+        );
+    };
     const clic = (d: number) => {
+        if (acteChoisi) {
+            setChoix((c) => (c.includes(d) ? c.filter((x) => x !== d) : [...c, d]));
+            return;
+        }
+
         const etat = vue[d] === outil ? 'saine' : outil;
         setLocal((l) => ({ ...l, [d]: etat }));
         router.post(
@@ -1676,45 +1710,186 @@ function Dents({ dents, etatsDents, dossier, peut }: Props) {
         );
     };
 
+    // Le plan de traitement à côté du schéma : le docteur voit les dents ET ce qu'il reste à faire
+    const ordre = { en_cours: 0, a_faire: 1, fait: 2 } as Record<string, number>;
+    const plan = actes.filter((a) => a.statut !== 'annule').sort((a, b) => (ordre[a.statut] ?? 3) - (ordre[b.statut] ?? 3));
+    const groupes = [
+        { statut: 'en_cours', titre: 'En cours' },
+        { statut: 'a_faire', titre: 'À faire' },
+        { statut: 'fait', titre: 'Fait' },
+    ];
+
     return (
-        <Box titre="Schéma dentaire" actions={<span className="text-xs text-muted-foreground">Extérieur : dents définitives · intérieur : dents de lait</span>}>
-            <div className="grid gap-6 lg:grid-cols-[1fr_240px]">
-                <SchemaBouche
-                    dents={Object.fromEntries(Object.entries(vue).filter(([, e]) => e !== 'saine'))}
-                    mode="mixte"
-                    modifiable={peut.medical}
-                    onClic={clic}
-                />
-                {peut.medical ? (
-                    <div className="flex flex-col gap-2 text-sm">
-                        <p className="font-semibold">1. Choisir l'état</p>
-                        {etatsDents.map((e) => (
-                            <button
-                                key={e}
-                                onClick={() => setOutil(e)}
-                                className={cn(
-                                    'flex items-center gap-2 rounded-lg border px-3 py-2 text-left',
-                                    outil === e ? 'border-primary bg-primary/10 font-semibold ring-2 ring-primary' : 'hover:bg-muted',
-                                )}
-                            >
-                                <span
-                                    className="inline-block size-4 rounded"
-                                    style={{
-                                        background: COULEURS_DENT[e]?.fill,
-                                        border: `1.5px solid ${COULEURS_DENT[e]?.stroke}`,
-                                    }}
-                                />
-                                {COULEURS_DENT[e]?.texte ?? e}
-                            </button>
-                        ))}
-                        <p className="mt-2 font-semibold">2. Cliquer sur la dent</p>
-                        <p className="text-xs text-muted-foreground">Recliquer sur une dent avec le même état la remet « saine ».</p>
+        <div className="flex flex-col gap-4">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
+                <Box
+                    titre="Schéma dentaire"
+                    actions={<span className="text-xs text-muted-foreground">Extérieur : dents définitives · intérieur : dents de lait</span>}
+                >
+                    <div className="grid gap-6 lg:grid-cols-[1fr_240px]">
+                        <SchemaBouche
+                            dents={Object.fromEntries(Object.entries(vue).filter(([, e]) => e !== 'saine'))}
+                            mode="mixte"
+                            modifiable={peut.medical}
+                            onClic={clic}
+                        />
+                        {peut.medical ? (
+                            <div className="flex flex-col gap-2 text-sm">
+                                <p className="font-semibold">1. Choisir l'état</p>
+                                {etatsDents.map((e) => (
+                                    <button
+                                        key={e}
+                                        onClick={() => setOutil(e)}
+                                        className={cn(
+                                            'flex items-center gap-2 rounded-lg border px-3 py-2 text-left',
+                                            outil === e ? 'border-primary bg-primary/10 font-semibold ring-2 ring-primary' : 'hover:bg-muted',
+                                        )}
+                                    >
+                                        <span
+                                            className="inline-block size-4 rounded"
+                                            style={{
+                                                background: COULEURS_DENT[e]?.fill,
+                                                border: `1.5px solid ${COULEURS_DENT[e]?.stroke}`,
+                                            }}
+                                        />
+                                        {COULEURS_DENT[e]?.texte ?? e}
+                                    </button>
+                                ))}
+                                <p className="mt-2 font-semibold">2. Cliquer sur la dent</p>
+                                <p className="text-xs text-muted-foreground">Recliquer sur une dent avec le même état la remet « saine ».</p>
+                                <div className="mt-4 border-t pt-3">
+                                    <p className="font-semibold">Ajouter un acte au plan</p>
+                                    {acteChoisi ? (
+                                        <div className="mt-2 flex flex-col gap-2 rounded-lg border border-orange-300 bg-orange-50 p-3 dark:bg-orange-950/30">
+                                            <b>{acteChoisi}</b>
+                                            <span className="text-xs">
+                                                Cliquez les dents sur le schéma (facultatif) :{' '}
+                                                <b>{choix.length ? [...choix].sort((a, b) => a - b).join(', ') : 'aucune'}</b>
+                                            </span>
+                                            <div className="grid grid-cols-2 gap-1 rounded-md bg-white p-1 text-xs dark:bg-background">
+                                                {(
+                                                    [
+                                                        ['a_faire', 'À faire'],
+                                                        ['fait', 'Fait'],
+                                                    ] as const
+                                                ).map(([v, l]) => (
+                                                    <button
+                                                        key={v}
+                                                        type="button"
+                                                        onClick={() => setStatutActe(v)}
+                                                        className={cn(
+                                                            'rounded px-2 py-1 font-medium',
+                                                            statutActe === v ? 'bg-primary text-primary-foreground' : '',
+                                                        )}
+                                                    >
+                                                        {l}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <Button size="sm" disabled={envoi} onClick={ajouterActe}>
+                                                {statutActe === 'fait' ? 'Ajouter dans « Fait »' : 'Ajouter dans « À faire »'}
+                                            </Button>
+                                            <button
+                                                type="button"
+                                                className="text-xs text-muted-foreground underline"
+                                                onClick={() => {
+                                                    setActeChoisi(null);
+                                                    setChoix([]);
+                                                }}
+                                            >
+                                                Annuler
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <input
+                                                className={cn(inputCls, 'mt-2 h-8 text-xs')}
+                                                placeholder="Chercher un acte…"
+                                                value={recherche}
+                                                onChange={(e) => setRecherche(e.target.value)}
+                                            />
+                                            <div className="mt-2 flex max-h-72 flex-col gap-1 overflow-y-auto">
+                                                {catalogue
+                                                    .filter((c) => c.libelle.toLowerCase().includes(recherche.trim().toLowerCase()))
+                                                    .map((c) => (
+                                                        <button
+                                                            key={c.id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setActeChoisi(c.libelle);
+                                                                setChoix([]);
+                                                            }}
+                                                            className="rounded-md border px-2 py-1.5 text-left text-xs hover:border-primary hover:bg-primary/5"
+                                                        >
+                                                            {c.libelle}
+                                                        </button>
+                                                    ))}
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            <p className="text-sm text-muted-foreground">Seuls les docteurs modifient le schéma dentaire.</p>
+                        )}
                     </div>
-                ) : (
-                    <p className="text-sm text-muted-foreground">Seuls les docteurs modifient le schéma dentaire.</p>
-                )}
+                </Box>
+                <Box
+                    titre={`Plan de traitement (${plan.length})`}
+                    actions={
+                        props.onPlan && (
+                            <button className="text-xs text-primary underline" onClick={props.onPlan}>
+                                Modifier / déplacer
+                            </button>
+                        )
+                    }
+                >
+                    {plan.length === 0 ? (
+                        <Empty>Aucun acte pour l'instant.</Empty>
+                    ) : (
+                        <div className="flex flex-col gap-4">
+                            {groupes.map((g) => {
+                                const liste = plan.filter((a) => a.statut === g.statut);
+                                if (liste.length === 0) return null;
+                                return (
+                                    <div key={g.statut}>
+                                        <div className="mb-1 flex items-center justify-between text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                                            {g.titre}
+                                            <Pill className={ACTE_STATUT[g.statut]?.c}>{liste.length}</Pill>
+                                        </div>
+                                        <ul className="divide-y rounded-lg border">
+                                            {liste.map((a) => (
+                                                <li key={a.id} className="flex items-start justify-between gap-2 px-3 py-2 text-sm">
+                                                    <span>
+                                                        <b>{a.libelle}</b>
+                                                        {a.dents && (
+                                                            <span className="ml-1 rounded bg-teal-50 px-1.5 py-0.5 text-xs font-semibold text-teal-800">
+                                                                dents {a.dents}
+                                                            </span>
+                                                        )}
+                                                        {a.notes && <span className="block text-xs text-muted-foreground">{a.notes}</span>}
+                                                    </span>
+                                                    {a.statut === 'fait' && <span className="shrink-0 text-xs text-muted-foreground">{dateFr(a.fait_le)}</span>}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </Box>
             </div>
-        </Box>
+            {(peut.actes ?? peut.medical) && (
+                <NouvelActe
+                    dossierId={dossier.id}
+                    catalogue={catalogue}
+                    avecPrix={peut.prix && !peut.papier}
+                    papier={!!peut.papier}
+                    docteurs={props.docteurs}
+                />
+            )}
+        </div>
     );
 }
 
@@ -2258,41 +2433,39 @@ function DossierPapier({ documents, typesDocuments, dossier, peut }: Props) {
                     <AjoutDocuments patientId={dossier.patient.id} typesDocuments={typesDocuments} typeDefaut="ancien_dossier" typeFixe />
                 </Box>
             )}
-            <Box titre={`Ancien dossier papier (${scans.length} page(s))`}>
+            <Box titre={`Ancien dossier papier (${scans.length} page(s)) · cliquez sur une page pour la voir en grand`}>
                 {scans.length === 0 ? (
                     <Empty>Pas encore de scan du dossier papier.</Empty>
                 ) : (
-                    <div className="flex flex-col gap-4">
+                    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
                         {scans.map((d, i) => (
-                            <div key={d.id} className="overflow-hidden rounded-lg border bg-card">
-                                <div className="flex items-center justify-between gap-2 border-b px-3 py-2 text-xs">
+                            <div key={d.id} className="overflow-hidden rounded-lg border bg-card text-xs hover:shadow-md">
+                                <a href={`/documents/${d.id}`} target="_blank" rel="noreferrer" title="Cliquer pour voir en grand">
+                                    {estImage(d) ? (
+                                        <img
+                                            src={`/documents/${d.id}`}
+                                            alt={`Page ${i + 1}`}
+                                            loading="lazy"
+                                            className="h-48 w-full bg-white object-cover object-top"
+                                        />
+                                    ) : (
+                                        <div className="flex h-48 items-center justify-center bg-muted text-base font-semibold">PDF</div>
+                                    )}
+                                </a>
+                                <div className="flex items-center justify-between gap-1 p-2">
                                     <span>
-                                        <b>Page {i + 1}</b> · {dateFr(d.created_at)} · {d.ajoute_par?.name}
+                                        <b>Page {i + 1}</b> · {dateFr(d.created_at)}
                                     </span>
-                                    <span className="flex items-center gap-3">
-                                        <a href={`/documents/${d.id}`} target="_blank" rel="noreferrer" className="font-semibold text-primary underline">
-                                            Ouvrir en grand
-                                        </a>
-                                        {peut.documents && (
-                                            <button
-                                                title="Supprimer"
-                                                className="text-muted-foreground hover:text-red-600"
-                                                onClick={() =>
-                                                    confirm('Supprimer cette page ?') && router.delete(`/documents/${d.id}`, { preserveScroll: true })
-                                                }
-                                            >
-                                                <Trash2 className="size-4" />
-                                            </button>
-                                        )}
-                                    </span>
+                                    {peut.documents && (
+                                        <button
+                                            title="Supprimer"
+                                            className="text-muted-foreground hover:text-red-600"
+                                            onClick={() => confirm('Supprimer cette page ?') && router.delete(`/documents/${d.id}`, { preserveScroll: true })}
+                                        >
+                                            <Trash2 className="size-4" />
+                                        </button>
+                                    )}
                                 </div>
-                                {estImage(d) ? (
-                                    <a href={`/documents/${d.id}`} target="_blank" rel="noreferrer">
-                                        <img src={`/documents/${d.id}`} alt={`Page ${i + 1}`} className="w-full bg-white object-contain" />
-                                    </a>
-                                ) : (
-                                    <iframe src={`/documents/${d.id}`} title={`Page ${i + 1}`} className="h-[80vh] w-full bg-white" />
-                                )}
                             </div>
                         ))}
                     </div>

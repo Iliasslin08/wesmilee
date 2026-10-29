@@ -108,7 +108,19 @@ class EspacePatientController extends Controller
             'date' => ['required', 'date', 'after_or_equal:today', 'before_or_equal:'.now()->addDays(self::JOURS_MAX)->toDateString()],
         ]);
 
-        return response()->json(array_keys($this->libres(Carbon::parse($data['date']))));
+        $heures = array_keys($this->libres(Carbon::parse($data['date'])));
+        // Jour fermé ou complet : on propose le prochain jour qui a encore de la place
+        $prochain = null;
+        if (! $heures) {
+            for ($j = Carbon::parse($data['date'])->addDay(); $j->lte(now()->addDays(self::JOURS_MAX)); $j->addDay()) {
+                if ($this->libres($j)) {
+                    $prochain = $j->toDateString();
+                    break;
+                }
+            }
+        }
+
+        return response()->json(['heures' => $heures, 'prochain' => $prochain]);
     }
 
     public function reserver(Request $request): RedirectResponse

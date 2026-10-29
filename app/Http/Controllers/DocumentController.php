@@ -20,9 +20,14 @@ class DocumentController extends Controller
         ]);
 
         foreach ($data['fichiers'] as $f) {
+            // Photos réduites (1800 px, JPEG) : beaucoup plus légères et toujours lisibles
+            $reduite = $data['type'] === 'photo_carte' ? null : \App\Support\Photo::reduire($f->getRealPath()); // la photo de carte garde son fond transparent
+            $chemin = $reduite !== null
+                ? tap("patients/{$patient->id}/".\Illuminate\Support\Str::random(40).'.jpg', fn ($c) => Storage::disk('local')->put($c, $reduite))
+                : $f->store("patients/{$patient->id}", 'local');
             $patient->documents()->create([
                 'type' => $data['type'],
-                'chemin' => $f->store("patients/{$patient->id}", 'local'),
+                'chemin' => $chemin,
                 'nom_original' => $f->getClientOriginalName(),
                 'ajoute_par' => $request->user()->id,
             ]);

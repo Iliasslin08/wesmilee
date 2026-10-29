@@ -32,7 +32,7 @@
 <div class="haut">
   <img src="/images/logo-wesmile.png" alt="We Smile">
   <h1>{{ $t('Mon espace patient', 'فضاء المريض') }}</h1>
-  <p>{{ $t('Prenez rendez-vous et suivez votre traitement', 'احجزوا موعدكم وتابعوا علاجكم') }}</p>
+  <p>{{ $t('Prenez rendez-vous en ligne', 'احجزوا موعدكم عبر الإنترنت') }}</p>
   @if ($slogan)<p style="margin-top:8px;display:inline-block;background:rgba(255,255,255,.18);border-radius:999px;padding:4px 12px;font-weight:600">🦷 {{ $slogan }}</p>@endif
 </div>
 <div class="wrap">

@@ -32,6 +32,8 @@
   label { display: block; font-size: 13px; font-weight: 600; color: #48616a; margin: 12px 0 6px; }
   input[type=date] { width: 100%; font: 16px 'Poppins', Arial; padding: 10px 12px; border: 1.5px solid #cfe2e5; border-radius: 10px; }
   .grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; }
+  .grille .vide { grid-column: 1 / -1; }
+  .grille .lien { background: none; border: 0; color: #048ea7; font: 600 14px Poppins, Arial; text-decoration: underline; cursor: pointer; padding: 0; margin-top: 6px; }
   .h { border: 1.5px solid #cfe2e5; background: #fff; border-radius: 10px; padding: 9px 0; font: 600 14px 'Poppins', Arial; cursor: pointer; color: #12303a; }
   .h.actif { background: #048ea7; border-color: #048ea7; color: #fff; }
   .vide { color: #6b8189; font-size: 14px; padding: 6px 0; }
@@ -39,6 +41,7 @@
   .btn:disabled { opacity: .45; }
   ul { list-style: none; padding: 0; margin: 0; } li { padding: 9px 0; border-bottom: 1px solid #e8f1f2; } li:last-child { border: 0; }
   .muted { color: #6b8189; font-size: 13px; }
+  .infos { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 14px; } .infos dt { color: #6b8189; } .infos dd { margin: 0; font-weight: 600; }
   .pill { float: inline-end; border-radius: 20px; padding: 1px 10px; font-size: 12px; font-weight: 600; }
   .p-ok { background: #e3f4d6; color: #3d7a12; } .p-cours { background: #dff4f6; color: #037786; } .p-att { background: #fff1c9; color: #7a5a00; }
   .totaux { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
@@ -92,53 +95,8 @@
     </div>
   @endif
 
-  @if ($actes->isNotEmpty())
-  <div class="carte">
-    <h2>{{ $t('Mon traitement', 'علاجي') }}</h2>
-    <ul>
-      @foreach ($actes as $a)
-        <li>{{ $a->libelle }}@if ($a->dents) <span class="muted">· {{ $t('dent', 'السن') }} {{ $a->dents }}</span>@endif
-          <span class="pill {{ $a->statut->value === 'fait' ? 'p-ok' : ($a->statut->value === 'en_cours' ? 'p-cours' : 'p-att') }}">{{ \App\Support\Langue::mot($a->statut->label()) }}</span></li>
-      @endforeach
-    </ul>
-  </div>
-  @endif
+  {{-- Mon espace = prendre rendez-vous uniquement. Le dossier (traitement, paiements…) se consulte avec la carte QR. --}}
 
-  @if ($labo->isNotEmpty())
-  <div class="carte">
-    <h2>{{ $t('Mes travaux au laboratoire', 'أعمالي في المختبر') }}</h2>
-    <ul>
-      @foreach ($labo as $c)
-        <li>{{ $c->travail }}@if ($c->dents) <span class="muted">· {{ $c->dents }}</span>@endif
-          <span class="pill {{ in_array($c->statut->value, ['pret', 'livre', 'pose']) ? 'p-ok' : 'p-cours' }}">{{ \App\Support\Langue::mot($c->statut->label()) }}</span></li>
-      @endforeach
-    </ul>
-  </div>
-  @endif
-
-  <div class="carte">
-    <h2>{{ $t('Mes paiements', 'مدفوعاتي') }}</h2>
-    <div class="totaux">
-      <div>{{ $t('Total', 'المجموع') }}<b>{{ $dh($total) }}</b></div>
-      <div>{{ $t('Payé', 'المدفوع') }}<b>{{ $dh($paye) }}</b></div>
-      <div class="{{ $reste > 0 ? 'reste' : 'solde' }}">{{ $t('Reste', 'الباقي') }}<b>{{ $reste > 0 ? $dh($reste) : $t('Soldé', 'مؤدى بالكامل') }}</b></div>
-    </div>
-    @if ($paiements->isNotEmpty())
-      <details style="margin-top:10px"><summary>{{ $t('Détail des paiements', 'تفاصيل المدفوعات') }}</summary>
-        <ul>@foreach ($paiements as $p)<li>{{ $p->date->format('d/m/Y') }} · <b>{{ $dh($p->montant) }}</b> · {{ \App\Support\Langue::mot($methodes[$p->methode] ?? $p->methode) }}<span class="muted" style="float:inline-end">{{ $t('Reçu n°', 'وصل رقم') }} {{ $p->numero_recu }}</span></li>@endforeach</ul>
-      </details>
-    @endif
-  </div>
-
-  @if ($seances->isNotEmpty())
-  <div class="carte">
-    <details><summary>{{ $t('Mes séances', 'حصصي') }} ({{ $seances->count() }})</summary>
-      <ul>@foreach ($seances as $s)<li><b>{{ $s->debut->format('d/m/Y') }}</b> · {{ $s->docteur?->name }}@if ($s->actes->isNotEmpty())<div class="muted">{{ $s->actes->map(fn ($a) => $a->libelle.($a->dents ? ' ('.$a->dents.')' : ''))->implode(', ') }}</div>@endif</li>@endforeach</ul>
-    </details>
-  </div>
-  @endif
-
-  @include('partials.avis', ['classe' => 'carte'])
 
   <div class="pied">{{ $cabinet['nom'] ?? 'Wesmile Center' }} · {{ $cabinet['ville'] ?? 'Rabat' }}@if (!empty($cabinet['telephone'])) · {{ $cabinet['telephone'] }}@endif
     @if ($slogan)<br><b>{{ $slogan }}</b>@endif
@@ -148,12 +106,22 @@
 <script>
   const grille = document.getElementById('grille'), ok = document.getElementById('ok'), heure = document.getElementById('heure');
   const motif = document.getElementById('motif'), date = document.getElementById('date');
+  let premier = true; // au chargement : si aujourd'hui est plein, on va directement au prochain jour libre
   async function charger() {
     heure.value = ''; ok.disabled = true; grille.innerHTML = '<div class="vide">{{ $t('Chargement…', 'جارٍ التحميل…') }}</div>';
     try {
       const r = await fetch(`{{ route('espace.creneaux') }}?motif=${motif.value}&date=${date.value}`, { headers: { Accept: 'application/json' } });
-      const h = r.ok ? await r.json() : [];
-      grille.innerHTML = h.length ? '' : '<div class="vide">{{ $t('Plus de place ce jour-là. Choisissez un autre jour.', 'لا توجد أماكن في هذا اليوم. اختاروا يوما آخر.') }}</div>';
+      const rep = r.ok ? await r.json() : { heures: [], prochain: null };
+      const h = rep.heures ?? [];
+      if (!h.length && rep.prochain && premier) { premier = false; date.value = rep.prochain; return charger(); }
+      premier = false;
+      grille.innerHTML = h.length ? '' : '<div class="vide">{{ $t('Pas de place ce jour-là (centre fermé ou complet).', 'لا توجد أماكن في هذا اليوم (المركز مغلق أو ممتلئ).') }}</div>';
+      if (!h.length && rep.prochain) {
+        const l = document.createElement('button'); l.type = 'button'; l.className = 'lien';
+        l.textContent = '{{ $t('Voir le prochain jour libre :', 'أقرب يوم متاح:') }} ' + rep.prochain.split('-').reverse().join('/');
+        l.onclick = () => { date.value = rep.prochain; charger(); };
+        grille.firstChild.appendChild(document.createElement('br')); grille.firstChild.appendChild(l);
+      }
       h.forEach((t) => {
         const b = document.createElement('button'); b.type = 'button'; b.className = 'h'; b.textContent = t;
         b.onclick = () => { grille.querySelectorAll('.h').forEach((x) => x.classList.remove('actif')); b.classList.add('actif'); heure.value = t; ok.disabled = false; };

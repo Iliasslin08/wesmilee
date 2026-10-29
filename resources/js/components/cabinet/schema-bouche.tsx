@@ -17,6 +17,8 @@ export const COULEURS_DENT: Record<
     couronne: { fill: "#14b8a6", stroke: "#0f766e", texte: "Couronne" },
     implant: { fill: "#8b5cf6", stroke: "#6d28d9", texte: "Implant" },
     absente: { fill: "#f1f5f9", stroke: "#94a3b8", texte: "Absente" },
+    // Sélection temporaire (ajout d'un acte sur ces dents) : pas dans la légende
+    choisie: { fill: "#fed7aa", stroke: "#ea580c", texte: "Choisie" },
 };
 
 type TypeDent = "incisive" | "canine" | "premolaire" | "molaire";
@@ -325,7 +327,7 @@ export function SchemaBouche({
         );
     };
 
-    const notees = Object.entries(dents).filter(([, e]) => e && e !== "saine");
+    const notees = Object.entries(dents).filter(([, e]) => e && e !== "saine" && e !== "choisie");
 
     return (
         <div className="flex flex-col items-center gap-3">
@@ -437,7 +439,7 @@ export function SchemaBouche({
             </svg>
 
             {!compact && (<div className="flex flex-wrap justify-center gap-3 text-xs">
-                {Object.entries(COULEURS_DENT).map(([k, c]) => (
+                {Object.entries(COULEURS_DENT).filter(([k]) => k !== 'choisie').map(([k, c]) => (
                     <span key={k} className="flex items-center gap-1">
                         <span
                             className="inline-block size-3 rounded-sm border"
