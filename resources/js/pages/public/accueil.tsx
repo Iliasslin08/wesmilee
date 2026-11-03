@@ -30,6 +30,11 @@ const T = {
         traitements: 'Médicaments pris actuellement',
         autre: 'Autre chose à signaler',
         confidentiel: 'Vos données restent confidentielles au sein du centre.',
+        donnees: '3 · Protection de vos données',
+        notice: "Le cabinet Dr EL BAKKOURI Malika (Wesmile Center) enregistre vos données (identité, coordonnées, santé, radios, paiements) dans votre dossier patient, pour vos rendez-vous, votre suivi, vos soins et vos résultats. Seul le personnel habilité du cabinet y a accès. Vos données restent au cabinet et ne sont pas transférées à l'étranger. Vous pouvez demander à l'accueil l'accès, la rectification ou l'opposition (loi 09-08).",
+        accepte: "J'accepte le traitement de mes données, y compris mes données de santé, pour mon suivi au cabinet. *",
+        sms: "J'accepte les rappels de rendez-vous par SMS / WhatsApp (facultatif)",
+        photos: "J'accepte l'enregistrement de photos de mes soins dans mon dossier (facultatif)",
         envoyer: 'Envoyer ma fiche',
         bonjour: 'Bonjour',
         completer: 'votre rendez-vous est enregistré. Merci de compléter votre fiche.',
@@ -64,6 +69,11 @@ const T = {
         traitements: 'الأدوية التي تتناولونها حاليا',
         autre: 'ملاحظات أخرى',
         confidentiel: 'معطياتكم تبقى سرية داخل المركز.',
+        donnees: '٣ · حماية معطياتكم الشخصية',
+        notice: 'تسجل عيادة الدكتورة البكوري مليكة (مركز Wesmile) معطياتكم (الهوية، معلومات الاتصال، الصحة، الأشعة، الأداءات) في ملفكم الطبي، من أجل المواعيد والتتبع والعلاج والنتائج. لا يطلع عليها إلا الموظفون المؤهلون داخل العيادة. تبقى معطياتكم داخل العيادة ولا تنقل إلى الخارج. يمكنكم طلب الولوج أو التصحيح أو التعرض لدى الاستقبال (القانون 09-08).',
+        accepte: 'أوافق على معالجة معطياتي، بما فيها معطياتي الصحية، من أجل تتبعي داخل العيادة. *',
+        sms: 'أوافق على تذكير المواعيد عبر الرسائل القصيرة / واتساب (اختياري)',
+        photos: 'أوافق على تسجيل صور العلاج في ملفي (اختياري)',
         envoyer: 'إرسال البطاقة',
         bonjour: 'مرحبا',
         completer: 'موعدكم مسجل. المرجو إتمام بطاقتكم.',
@@ -99,6 +109,9 @@ export default function Accueil({ antecedents, attendu = null }: { antecedents: 
         antecedents_autres: '',
         allergies: '',
         traitements: '',
+        consentement: false,
+        consentement_sms: false,
+        consentement_photos: false,
         langue: 'fr' as Langue,
     });
     const { data, setData, errors, processing } = form;
@@ -231,9 +244,39 @@ export default function Accueil({ antecedents, attendu = null }: { antecedents: 
                     </Field>
                 </div>
 
+                <h2 className="mt-6 mb-3 font-semibold text-[#0b5f6b]">{t.donnees}</h2>
+                <p className="rounded-xl bg-muted p-4 text-sm leading-relaxed">{t.notice}</p>
+                <div className="mt-3 grid gap-3 text-base">
+                    {(
+                        [
+                            ['consentement', t.accepte],
+                            ['consentement_sms', t.sms],
+                            ['consentement_photos', t.photos],
+                        ] as const
+                    ).map(([cle, lib]) => (
+                        <label
+                            key={cle}
+                            className={cn(
+                                'flex cursor-pointer items-start gap-3 rounded-xl border p-3',
+                                data[cle] ? 'border-[#04a3b5] bg-[#e6f7f9]' : 'bg-background',
+                                cle === 'consentement' && 'font-semibold',
+                            )}
+                        >
+                            <input
+                                type="checkbox"
+                                className="mt-1 size-6 shrink-0 accent-[#04a3b5]"
+                                checked={data[cle]}
+                                onChange={(e) => setData(cle, e.target.checked)}
+                            />
+                            <span>{lib}</span>
+                        </label>
+                    ))}
+                    {errors.consentement && <p className="text-sm text-red-600">{errors.consentement}</p>}
+                </div>
+
                 <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
                     <span className="text-xs text-muted-foreground">{t.confidentiel}</span>
-                    <Button type="submit" size="lg" className="h-12 px-8 text-base" disabled={processing}>
+                    <Button type="submit" size="lg" className="h-12 px-8 text-base" disabled={processing || !data.consentement}>
                         {t.envoyer}
                     </Button>
                 </div>

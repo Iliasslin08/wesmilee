@@ -86,7 +86,7 @@ class CabinetTest extends TestCase
         $finance = $this->user(Role::Finance);
 
         // 1. Le patient remplit sa fiche sur la tablette (sans connexion)
-        $this->post('/accueil', ['nom' => 'Ziani', 'prenom' => 'Karim', 'telephone' => '0611223344', 'ville' => 'Oujda', 'antecedents' => ['diabete'], 'allergies' => 'Pénicilline'])
+        $this->post('/accueil', ['nom' => 'Ziani', 'prenom' => 'Karim', 'telephone' => '0611223344', 'ville' => 'Oujda', 'antecedents' => ['diabete'], 'allergies' => 'Pénicilline', 'consentement' => '1'])
             ->assertRedirect('/accueil/merci?lang=fr');
         $patient = Patient::firstWhere('nom', 'Ziani');
         $this->assertSame('a_valider', $patient->statut_fiche);
@@ -232,7 +232,7 @@ class CabinetTest extends TestCase
         $reception = $this->user(Role::Reception);
         $chef = $this->user(Role::Admin);
 
-        $this->post('/accueil', ['nom' => 'Idrissi', 'prenom' => 'Nora', 'telephone' => '0600000000'])->assertRedirect('/accueil/merci?lang=fr');
+        $this->post('/accueil', ['nom' => 'Idrissi', 'prenom' => 'Nora', 'telephone' => '0600000000', 'consentement' => '1'])->assertRedirect('/accueil/merci?lang=fr');
         $patient = Patient::firstWhere('nom', 'Idrissi');
 
         // Badge du menu + page des fiches, pour la réception et le chef
@@ -512,7 +512,7 @@ class CabinetTest extends TestCase
         $this->actingAs($reception)->post("/patients/{$karim->id}/tablette")->assertRedirect();
         auth()->logout();
         $this->get('/accueil')->assertInertia(fn ($p) => $p->where('attendu.id', $karim->id));
-        $this->post('/accueil', ['patient_attendu_id' => $karim->id, 'nom' => 'Tazi', 'prenom' => 'Karim', 'telephone' => '0661223344', 'date_naissance' => '1990-05-12', 'allergies' => 'Pénicilline'])->assertRedirect();
+        $this->post('/accueil', ['patient_attendu_id' => $karim->id, 'nom' => 'Tazi', 'prenom' => 'Karim', 'telephone' => '0661223344', 'date_naissance' => '1990-05-12', 'allergies' => 'Pénicilline', 'consentement' => '1'])->assertRedirect();
 
         $karim->refresh();
         $this->assertFalse($karim->fiche_a_completer);
@@ -970,5 +970,16 @@ class CabinetTest extends TestCase
         $rdv = RendezVous::create(['patient_id' => $patient->id, 'docteur_id' => $nassim->id, 'mission' => 'Soin', 'debut' => now(), 'fin' => now()->addMinutes(30), 'statut' => StatutRdv::EnCours, 'numero_appel' => 7, 'appele_le' => now()]);
         $this->actingAs($this->user(Role::Reception))->get('/tv')
             ->assertInertia(fn ($p) => $p->where('salles.0.nom', 'Salle 2')->where('salles.0.patient', 'Karim Z.')->where('salles.0.numero', 7));
+    }
+
+    public function test_tablette_exige_le_consentement_et_l_enregistre(): void
+    {
+        $this->post('/accueil', ['nom' => 'Sans', 'prenom' => 'Accord', 'telephone' => '0600000011'])->assertSessionHasErrors('consentement');
+        $this->post('/accueil', ['nom' => 'Avec', 'prenom' => 'Accord', 'telephone' => '0600000012', 'consentement' => '1', 'consentement_sms' => '1'])->assertRedirect();
+        $p = \App\Models\Patient::where('telephone', '0600000012')->first();
+        $this->assertNotNull($p->consentement_le);
+        $this->assertSame('tablette', $p->consentement_mode);
+        $this->assertTrue($p->consentement_sms);
+        $this->assertFalse($p->consentement_photos);
     }
 }

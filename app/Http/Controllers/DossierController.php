@@ -44,6 +44,8 @@ class DossierController extends Controller
 
         return Inertia::render('dossiers/show', [
             'dossier' => $dossier,
+            // Devis accepté mais radio et/ou photos manquantes : grande alerte en haut du dossier
+            'manques' => $dossier->manques(),
             'alertes' => $voitFinance ? $dossier->alertes() : array_values(array_filter($dossier->alertes(), fn ($a) => ! str_starts_with($a['texte'], 'Reste'))),
             'actes' => $actes,
             'seances' => $dossier->seances()->with(['docteur:id,name', 'actes:id,seance_id,libelle,dents'])->get(),
@@ -190,5 +192,23 @@ class DossierController extends Controller
             ]);
 
         return Inertia::render('reception/a-rappeler', ['dossiers' => $dossiers]);
+    }
+
+    /** Après le devis accepté par la finance : dossiers sans radio et/ou sans photos. */
+    public function aCompleter(): Response
+    {
+        $dossiers = Dossier::aCompleter()
+            ->with('patient:id,nom,prenom,telephone')
+            ->withMax(['plans as accepte_le' => fn ($p) => $p->where('statut', 'valide')], 'valide_le')
+            ->orderByDesc('accepte_le')->limit(300)->get()
+            ->map(fn (Dossier $d) => [
+                'id' => $d->id, 'numero' => $d->numero, 'patient' => $d->patient,
+                'manques' => $d->manques(),
+                'accepte_le' => $d->accepte_le,
+                'prochain_rdv' => $d->patient->rendezVous()->where('debut', '>=', now())
+                    ->whereIn('statut', ['planifie', 'arrive'])->orderBy('debut')->value('debut'),
+            ]);
+
+        return Inertia::render('dossiers/a-completer', ['dossiers' => $dossiers]);
     }
 }

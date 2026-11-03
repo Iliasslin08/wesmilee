@@ -1,5 +1,5 @@
 import { Head, Link, useForm } from '@inertiajs/react';
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList, Printer } from 'lucide-react';
 import { useState } from 'react';
 import type { Prochain } from '@/components/cabinet/prochain-rdv';
 import { prochainIncomplet, ProchainRdvChamps, prochainVide } from '@/components/cabinet/prochain-rdv';
@@ -128,8 +128,15 @@ function Devis({ plan, docteurs }: { plan: Plan; docteurs: DocSoins[] }) {
                 </span>
             }
             actions={
-                <span className="text-xs text-muted-foreground">
+                <span className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                     Consultation : {plan.propose_par?.name ?? '—'} · {dateHeure(plan.created_at)}
+                    {plan.dossier && (
+                        <Button asChild size="sm" variant="outline">
+                            <a href={`/plans/${plan.id}/devis`} target="_blank" rel="noreferrer">
+                                <Printer /> Devis
+                            </a>
+                        </Button>
+                    )}
                 </span>
             }
         >

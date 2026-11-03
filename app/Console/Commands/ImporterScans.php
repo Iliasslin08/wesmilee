@@ -4,95 +4,89 @@ namespace App\Console\Commands;
 
 use App\Models\Document;
 use App\Models\Dossier;
+use App\Models\User;
+use App\Support\Photo;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 /**
- * Importe les scans des dossiers papier : un sous-dossier par patient, nommé avec le n° de dossier
- * (ex. « Dossier patient\5500\img20261028.jpg »). Chaque fichier va dans l'onglet « Dossier papier »
- * du bon patient. Les photos trop grandes sont réduites. Un fichier déjà importé n'est jamais recopié.
+ * Ajoute les scans des anciens dossiers papier au dossier de chaque patient.
+ * Un sous-dossier par patient, nommé avec le n° de dossier : « Dossier patient\5500\img….jpg ».
  */
 class ImporterScans extends Command
 {
-    protected $signature = 'cabinet:importer-scans {dossier : chemin du dossier qui contient les sous-dossiers 5500, 5501…} {--essai : montrer sans rien enregistrer}';
+    protected $signature = 'cabinet:importer-scans {dossier : chemin du dossier qui contient un sous-dossier par n° de dossier} {--essai : montrer le résultat sans rien enregistrer}';
 
-    protected $description = 'Ajoute les scans des dossiers papier (un sous-dossier par n° de dossier) dans la plateforme';
+    protected $description = 'Ajoute les photos des anciens dossiers papier (type « Ancien dossier papier ») à chaque patient';
 
     public function handle(): int
     {
         $racine = rtrim($this->argument('dossier'), '\\/');
-        if (! is_dir($racine)) {
+        if (! File::isDirectory($racine)) {
             $this->error("Dossier introuvable : $racine");
 
             return self::FAILURE;
         }
-        $reduire = function_exists('imagecreatefromjpeg');
-        if (! $reduire) {
-            $this->warn('Extension GD absente : les photos seront copiées sans être réduites.');
-        }
 
-        $auteur = \App\Models\User::where('role', 'admin')->value('id') ?? \App\Models\User::value('id');
-        $ajoutes = $deja = $introuvables = 0;
-        $octetsAvant = $octetsApres = 0;
-        $rapport = [];
-        $iter = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($racine, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::SELF_FIRST);
-        $dossiers = [];
-        foreach ($iter as $f) {
-            if ($f->isDir() && ctype_digit($f->getFilename())) {
-                $dossiers[$f->getFilename()] = $f->getPathname();
-            }
-        }
-        ksort($dossiers, SORT_NATURAL);
+        $essai = (bool) $this->option('essai');
+        $auteur = User::where('role', 'admin')->value('id') ?? User::value('id');
+        $ajoutes = 0;
+        $dejaLa = 0;
+        $introuvables = [];
 
-        foreach ($dossiers as $numero => $chemin) {
-            $dossier = Dossier::with('patient')->where('numero', $numero)->first();
-            $fichiers = collect(scandir($chemin))->filter(fn ($n) => preg_match('/\.(jpe?g|png|webp|pdf)$/i', $n))->sort(fn ($a, $b) => strnatcasecmp($a, $b))->values();
-            if (! $dossier?->patient) {
-                $introuvables++;
-                $rapport[] = [$numero, '—', count($fichiers).' fichier(s)', 'DOSSIER INTROUVABLE'];
+        $fichiers = collect(File::allFiles($racine))
+            ->filter(fn ($f) => in_array(strtolower($f->getExtension()), ['jpg', 'jpeg', 'png', 'webp', 'pdf']))
+            ->sortBy(fn ($f) => $f->getPathname());
+
+        foreach ($fichiers as $f) {
+            // n° de dossier = nom du dossier qui contient l'image (ex. 5500, ou 5530 rangé dans 5529)
+            $numero = basename($f->getPath());
+            if (! ctype_digit($numero)) {
+                $introuvables[$numero.' (nom non numérique)'] = true;
 
                 continue;
             }
-            $patient = $dossier->patient;
-            $n = 0;
-            foreach ($fichiers as $nom) {
-                $existe = $patient->documents()->where('type', 'ancien_dossier')->where('nom_original', $nom)->exists();
-                if ($existe) {
-                    $deja++;
 
-                    continue;
-                }
-                $source = $chemin.DIRECTORY_SEPARATOR.$nom;
-                $octetsAvant += filesize($source);
-                if ($this->option('essai')) {
-                    $n++;
+            $dossier = Dossier::with('patient')->where('numero', $numero)->first()
+                ?? Dossier::with('patient')->where('ancien_numero_papier', $numero)->first();
+            if (! $dossier || ! $dossier->patient) {
+                $introuvables[$numero] = true;
 
-                    continue;
-                }
-                $contenu = $reduire ? \App\Support\Photo::reduire($source) : null;
-                $contenu ??= file_get_contents($source);
-                $ext = $contenu !== false && $reduire && preg_match('/\.(jpe?g|png|webp)$/i', $nom) ? 'jpg' : strtolower(pathinfo($nom, PATHINFO_EXTENSION));
-                $stockage = "patients/{$patient->id}/".Str::random(40).'.'.$ext;
-                Storage::disk('local')->put($stockage, $contenu);
-                $octetsApres += strlen($contenu);
-                $patient->documents()->create(['type' => 'ancien_dossier', 'chemin' => $stockage, 'nom_original' => $nom, 'ajoute_par' => $auteur]);
-                $n++;
+                continue;
             }
-            $ajoutes += $n;
-            $rapport[] = [$numero, $patient->nom_complet, count($fichiers).' fichier(s)', $n ? "$n ajouté(s)" : 'déjà fait'];
+
+            $nom = $numero.'/'.$f->getFilename();
+            $patient = $dossier->patient;
+            if ($patient->documents()->where('type', 'ancien_dossier')->where('nom_original', $nom)->exists()) {
+                $dejaLa++;
+
+                continue;
+            }
+
+            if (! $essai) {
+                $estPdf = strtolower($f->getExtension()) === 'pdf';
+                $reduite = $estPdf ? null : Photo::reduire($f->getPathname());
+                $chemin = "patients/{$patient->id}/".Str::random(40).($reduite !== null ? '.jpg' : '.'.strtolower($f->getExtension()));
+                Storage::disk('local')->put($chemin, $reduite ?? File::get($f->getPathname()));
+                $patient->documents()->create([
+                    'type' => 'ancien_dossier',
+                    'chemin' => $chemin,
+                    'nom_original' => $nom,
+                    'ajoute_par' => $auteur,
+                ]);
+            }
+            $ajoutes++;
+            $this->line("  + dossier $numero · {$patient->nom_complet} · {$f->getFilename()}");
         }
 
-        $this->table(['N° dossier', 'Patient', 'Scans', 'Résultat'], $rapport);
-        $this->info("$ajoutes page(s) ajoutée(s) · $deja déjà présente(s) · $introuvables dossier(s) introuvable(s).");
-        if (! $this->option('essai') && $octetsAvant > 0) {
-            $this->line(sprintf('Taille : %.1f Mo → %.1f Mo', $octetsAvant / 1048576, $octetsApres / 1048576));
-        }
-        if ($this->option('essai')) {
-            $this->warn('Mode essai : rien n’a été enregistré.');
+        $this->newLine();
+        $this->info(($essai ? '[ESSAI] ' : '')."$ajoutes image(s) ajoutée(s), $dejaLa déjà présente(s).");
+        if ($introuvables) {
+            $this->warn('Aucun dossier dans la plateforme pour : '.implode(', ', array_keys($introuvables)));
         }
 
         return self::SUCCESS;
     }
-
 }

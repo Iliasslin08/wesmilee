@@ -22,6 +22,7 @@ import { useEffect, useState } from 'react';
 import { PatientSearch } from '@/components/cabinet/patient-search';
 import { RadioForm } from '@/components/cabinet/radio-form';
 import { FicheACompleter } from '@/components/cabinet/fiche-a-completer';
+import { Consentement } from '@/components/cabinet/consentement';
 import { ModifierRdv } from '@/components/cabinet/modifier-rdv';
 import type { Prochain } from '@/components/cabinet/prochain-rdv';
 import { prochainIncomplet, ProchainRdvChamps, ProchainRdvModal, prochainVide } from '@/components/cabinet/prochain-rdv';
@@ -143,6 +144,7 @@ type Props = {
         patient: Patient & Record<string, unknown>;
     };
     alertes: { type: string; texte: string }[];
+    manques?: string[];
     actes: Acte[];
     seances: Seance[];
     seanceOuverte: Seance | null;
@@ -271,6 +273,12 @@ export default function DossierShow(props: Props) {
                         )}
                         {p.vient_de_loin && <Pill className="bg-orange-100 text-orange-700">Vient de {p.ville}</Pill>}
                         {p.fiche_a_completer && <FicheACompleter patientId={p.id} bouton={peut.identite} />}
+                        <Consentement
+                            patientId={p.id}
+                            le={p.consentement_le as string | null}
+                            mode={p.consentement_mode as string | null}
+                            bouton={peut.identite}
+                        />
                     </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -320,6 +328,19 @@ export default function DossierShow(props: Props) {
                 </div>
             </div>
 
+            {(props.manques?.length ?? 0) > 0 && (
+                <div className="flex items-start gap-3 rounded-xl border-2 border-red-400 bg-red-50 px-4 py-4 text-red-900 dark:bg-red-950/40 dark:text-red-100">
+                    <AlertTriangle className="mt-0.5 size-7 shrink-0 text-red-600" />
+                    <div>
+                        <div className="text-lg font-bold">
+                            Dossier incomplet : {props.manques!.includes('radio') && props.manques!.includes('photos') ? 'radio et photos manquantes' : props.manques!.includes('radio') ? 'radio manquante' : 'photos manquantes'}
+                        </div>
+                        <div className="text-sm">
+                            Le patient a accepté le devis. Faites {props.manques!.includes('radio') && props.manques!.includes('photos') ? 'la radio et les photos' : props.manques!.includes('radio') ? 'la radio' : 'les photos'} avant le premier soin, puis ajoutez-les au dossier.
+                        </div>
+                    </div>
+                </div>
+            )}
             {props.demandesRadioDossier.length > 0 && (
                 <div className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900">
                     <ScanLine className="size-4" /> Radio demandée à la radiologie :{' '}
@@ -2196,6 +2217,15 @@ function Paiements({ paiements, finance, dossier, peut }: Props & { finance: Non
                     </Box>
                 ))}
             </div>
+            {peut.finance && (
+                <div className="flex justify-end">
+                    <Button asChild variant="outline">
+                        <a href={`/dossiers/${dossier.id}/devis`} target="_blank" rel="noreferrer">
+                            <Printer /> Devis (actes à faire)
+                        </a>
+                    </Button>
+                </div>
+            )}
             {nouveauRecu && (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-green-300 bg-green-50 px-4 py-3 text-green-900 dark:bg-green-950/30 dark:text-green-100">
                     <span>

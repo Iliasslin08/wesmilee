@@ -7,6 +7,7 @@ import { conseilles, faitCeSoin } from '@/lib/docteurs';
 import { cn } from '@/lib/utils';
 import { Creneaux, useCreneaux } from '@/components/cabinet/prochain-rdv';
 import { FicheACompleter } from '@/components/cabinet/fiche-a-completer';
+import { Consentement } from '@/components/cabinet/consentement';
 import { Button } from '@/components/ui/button';
 import type { Patient } from '@/lib/cabinet';
 import { dateFr, depuis, ETAT_DOCTEUR, heure, STATUT_RDV } from '@/lib/cabinet';
@@ -226,6 +227,7 @@ export default function SalleAttente({ rdvs, docteurs }: { rdvs: Rdv[]; docteurs
                                                 )}
                                                 <TypeVisite r={r} />
                                                 {r.patient.fiche_a_completer && <FicheACompleter patientId={r.patient.id} />}
+                                                {!r.patient.fiche_a_completer && !r.patient.consentement_le && <Consentement patientId={r.patient.id} bouton />}
                                             </div>
                                             <div className="text-sm text-muted-foreground">
                                                 {r.mission} · {r.docteur?.name}

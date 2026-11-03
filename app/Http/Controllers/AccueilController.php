@@ -51,15 +51,28 @@ class AccueilController extends Controller
             'antecedents_autres' => ['nullable', 'string', 'max:1000'],
             'allergies' => ['nullable', 'string', 'max:500'],
             'traitements' => ['nullable', 'string', 'max:500'],
-        ]);
+            'consentement' => ['accepted'],
+            'consentement_sms' => ['boolean'],
+            'consentement_photos' => ['boolean'],
+        ], ['consentement.accepted' => 'Merci de cocher « J\'accepte » pour continuer.']);
+
+        // Consentement loi 09-08 (CNDP) : date et options enregistrées dans le dossier
+        unset($data['consentement']);
+        $consentement = [
+            'consentement_le' => now(),
+            'consentement_mode' => 'tablette',
+            'consentement_sms' => $request->boolean('consentement_sms'),
+            'consentement_photos' => $request->boolean('consentement_photos'),
+        ];
+        unset($data['consentement_sms'], $data['consentement_photos']);
 
         // Patient attendu (envoyé par la réception) : sa fiche complète directement son dossier.
         $attendu = self::attendu();
         if ($attendu && (int) $request->input('patient_attendu_id') === $attendu->id) {
-            $attendu->update(collect($data)->filter(fn ($v) => filled($v))->all() + ['fiche_a_completer' => false]);
+            $attendu->update(collect($data)->filter(fn ($v) => filled($v))->all() + $consentement + ['fiche_a_completer' => false]);
             Cache::forget(self::CLE_TABLETTE);
         } else {
-            Patient::create($data + ['statut_fiche' => 'a_valider']);
+            Patient::create($data + $consentement + ['statut_fiche' => 'a_valider']);
         }
 
         return redirect()->route('accueil.merci', ['lang' => $request->input('langue') === 'ar' ? 'ar' : 'fr']);

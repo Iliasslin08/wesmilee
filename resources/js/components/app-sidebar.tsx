@@ -1,6 +1,7 @@
 import { Link, usePage } from '@inertiajs/react';
 import {
     BookUser,
+    Camera,
     Building2,
     CalendarDays,
     ClipboardCheck,
@@ -31,12 +32,14 @@ const MENUS: Record<string, NavItem[]> = {
         { title: 'Agenda', href: '/agenda', icon: CalendarDays },
         { title: 'Fiches à valider', href: '/fiches', icon: ClipboardCheck },
         { title: 'Tous les dossiers', href: '/patients', icon: BookUser },
+        { title: 'Radio / photos manquantes', href: '/a-completer', icon: Camera },
         { title: 'Patients à rappeler', href: '/a-rappeler', icon: PhoneCall },
         { title: 'Écran TV', href: '/tv', icon: Tv },
     ],
     docteur: [
         { title: 'Mes patients', href: '/mes-patients', icon: Stethoscope },
         { title: 'Tous les dossiers', href: '/patients', icon: BookUser },
+        { title: 'Radio / photos manquantes', href: '/a-completer', icon: Camera },
         { title: 'Mes horaires', href: '/mes-horaires', icon: Clock },
     ],
     admin_finance: [
@@ -45,13 +48,17 @@ const MENUS: Record<string, NavItem[]> = {
     ],
     radiologue: [
         { title: 'Radiologie', href: '/radiologie', icon: ScanLine },
+        { title: 'Radio / photos manquantes', href: '/a-completer', icon: Camera },
         { title: 'Tous les dossiers', href: '/patients', icon: BookUser },
     ],
     docteur_labo: [
         { title: 'Commandes', href: '/labo', icon: FlaskConical },
         { title: 'Tous les dossiers', href: '/patients', icon: BookUser },
     ],
-    photographe: [{ title: 'Tous les dossiers', href: '/patients', icon: BookUser }],
+    photographe: [
+        { title: 'Radio / photos manquantes', href: '/a-completer', icon: Camera },
+        { title: 'Tous les dossiers', href: '/patients', icon: BookUser },
+    ],
     admin: [
         { title: 'Tableau de bord', href: '/admin/tableau-de-bord', icon: LayoutGrid },
         { title: 'Devis à présenter', href: '/plans', icon: ClipboardList },
@@ -59,6 +66,7 @@ const MENUS: Record<string, NavItem[]> = {
         { title: 'Agenda', href: '/agenda', icon: CalendarDays },
         { title: 'Fiches à valider', href: '/fiches', icon: ClipboardCheck },
         { title: 'Tous les dossiers', href: '/patients', icon: BookUser },
+        { title: 'Radio / photos manquantes', href: '/a-completer', icon: Camera },
         { title: 'Patients à rappeler', href: '/a-rappeler', icon: PhoneCall },
         { title: 'Labo', href: '/labo', icon: FlaskConical },
         { title: 'Impayés', href: '/impayes', icon: Wallet },
@@ -78,13 +86,14 @@ MENUS.developpeur = [
 ];
 
 export function AppSidebar() {
-    const { auth, fichesEnAttente, demandesRadio, rdvAFixer, avisNonLus, plansAValider } = usePage().props as unknown as {
+    const { auth, fichesEnAttente, demandesRadio, rdvAFixer, avisNonLus, plansAValider, dossiersACompleter } = usePage().props as unknown as {
         auth: { user?: Record<string, unknown> };
         fichesEnAttente?: number;
         demandesRadio?: number;
         rdvAFixer?: number;
         avisNonLus?: number;
         plansAValider?: number;
+        dossiersACompleter?: number;
     };
     const role = (auth.user?.role as string) ?? '';
     // Labo : seule la cheffe a « Tous les dossiers »
@@ -100,7 +109,9 @@ export function AppSidebar() {
                   ? { ...i, badge: avisNonLus ?? 0 }
                   : i.href === '/plans'
                     ? { ...i, badge: plansAValider ?? 0 }
-                    : i,
+                    : i.href === '/a-completer'
+                      ? { ...i, badge: dossiersACompleter ?? 0 }
+                      : i,
     );
 
     return (

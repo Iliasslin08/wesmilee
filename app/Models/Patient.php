@@ -24,6 +24,9 @@ class Patient extends Model
         'anciens_telephones' => 'array',
         'valide_le' => 'datetime',
         'fiche_a_completer' => 'boolean',
+        'consentement_le' => 'datetime',
+        'consentement_sms' => 'boolean',
+        'consentement_photos' => 'boolean',
     ];
 
     protected $appends = ['nom_complet', 'age', 'vient_de_loin'];

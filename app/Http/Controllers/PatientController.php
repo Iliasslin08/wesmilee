@@ -112,6 +112,10 @@ class PatientController extends Controller
             'ville' => $patient->ville,
         ]));
         $existant->update(['fiche_a_completer' => false]);
+        // consentement donné sur la tablette : il suit la fiche dans le dossier
+        if ($patient->consentement_le) {
+            $existant->update($patient->only(['consentement_le', 'consentement_mode', 'consentement_sms', 'consentement_photos']));
+        }
         $patient->documents()->update(['patient_id' => $existant->id]);
         $patient->forceDelete();
         $dossier = $existant->dossier;
@@ -179,6 +183,21 @@ class PatientController extends Controller
     {
         Cache::put(AccueilController::CLE_TABLETTE, $patient->id, now()->addMinutes(30));
         $this->ok("La tablette affiche maintenant la fiche de {$patient->nom_complet}. Donnez-lui la tablette.");
+
+        return back();
+    }
+
+    /** Consentement donné sur la fiche papier signée (patient qui ne peut pas utiliser la tablette). */
+    public function consentementPapier(Request $request, Patient $patient): RedirectResponse
+    {
+        $data = $request->validate(['sms' => ['boolean'], 'photos' => ['boolean']]);
+        $patient->update([
+            'consentement_le' => now(),
+            'consentement_mode' => 'papier',
+            'consentement_sms' => (bool) ($data['sms'] ?? false),
+            'consentement_photos' => (bool) ($data['photos'] ?? false),
+        ]);
+        $this->ok("Consentement enregistré pour {$patient->nom_complet}. Pensez à numériser la fiche signée dans « Documents ».");
 
         return back();
     }

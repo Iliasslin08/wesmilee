@@ -17,7 +17,7 @@ class SalleAttenteController extends Controller
     public function index(): Response
     {
         $rdvs = RendezVous::duJour()->whereNotIn('statut', [StatutRdv::Annule->value])
-            ->with(['patient:id,nom,prenom,ville,telephone,allergies,fiche_a_completer', 'patient.dossier:id,patient_id,numero', 'docteur:id,name'])
+            ->with(['patient:id,nom,prenom,ville,telephone,allergies,fiche_a_completer,consentement_le', 'patient.dossier:id,patient_id,numero', 'docteur:id,name'])
             ->orderByDesc('urgence')->orderBy('debut')->get();
         self::typeVisite($rdvs);
         // Patient venu aujourd'hui (urgence, sans RDV…) qui a AUSSI un RDV plus tard : on le signale pour pouvoir le supprimer
@@ -76,6 +76,8 @@ class SalleAttenteController extends Controller
         }
         if ($rdv->patient->fiche_a_completer) {
             $this->erreur("{$rdv->patient->nom_complet} est arrivé(e) · N° {$rdv->numero_appel}. ⚠ Fiche non remplie : envoyez le patient à la tablette.");
+        } elseif (! $rdv->patient->consentement_le) {
+            $this->erreur("{$rdv->patient->nom_complet} est arrivé(e) · N° {$rdv->numero_appel}. ⚠ Consentement données non donné : envoyez le patient à la tablette.");
         } else {
             $this->ok("{$rdv->patient->nom_complet} est arrivé(e) · N° {$rdv->numero_appel}");
         }

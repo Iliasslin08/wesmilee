@@ -74,6 +74,45 @@ class Dossier extends Model
         return $this->hasMany(CommandeLabo::class)->latest();
     }
 
+    public function plans(): HasMany
+    {
+        return $this->hasMany(PlanAValider::class);
+    }
+
+    /** Photos cliniques du patient (la photo de la carte ne compte pas). */
+    public const TYPES_PHOTOS = ['photo_avant', 'photo_apres'];
+
+    /**
+     * Dossiers à compléter : la finance a fait accepter le devis (plan validé),
+     * mais il manque encore la radio et/ou les photos.
+     */
+    public function scopeACompleter($query)
+    {
+        return $query->whereHas('plans', fn ($p) => $p->where('statut', 'valide'))
+            ->where(fn ($w) => $w
+                ->where(fn ($r) => $r->whereDoesntHave('radios')
+                    ->whereDoesntHave('patient.documents', fn ($d) => $d->where('type', 'radio')))
+                ->orWhereDoesntHave('patient.documents', fn ($d) => $d->whereIn('type', self::TYPES_PHOTOS)));
+    }
+
+    /** Ce qui manque encore au dossier : « radio », « photos ». Vide si le devis n'est pas encore accepté. */
+    public function manques(): array
+    {
+        if (! $this->plans()->where('statut', 'valide')->exists()) {
+            return [];
+        }
+        $docs = $this->patient->documents();
+        $m = [];
+        if (! $this->radios()->exists() && ! (clone $docs)->where('type', 'radio')->exists()) {
+            $m[] = 'radio';
+        }
+        if (! (clone $docs)->whereIn('type', self::TYPES_PHOTOS)->exists()) {
+            $m[] = 'photos';
+        }
+
+        return $m;
+    }
+
     public function paiements(): HasMany
     {
         return $this->hasMany(Paiement::class)->latest('id');

@@ -90,7 +90,7 @@ class PlanController extends Controller
     }
 
     /** Chaque ligne du plan avec son prix : celui de l'acte déjà prévu, sinon celui du catalogue. */
-    private function lignesAvecPrix(PlanAValider $plan): array
+    public function lignesAvecPrix(PlanAValider $plan): array
     {
         $ouverts = $plan->dossier?->actes()->whereIn('statut', [StatutActe::AFaire->value, StatutActe::EnCours->value])->get() ?? collect();
 

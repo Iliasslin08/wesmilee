@@ -63,6 +63,10 @@ Route::middleware(['auth', 'verified', 'role'])->group(function () {
         Route::get('ordonnances/{ordonnance}/imprimer', [\App\Http\Controllers\OrdonnanceController::class, 'imprimer'])->name('ordonnances.imprimer');
     });
 
+    // Devis accepté mais radio et/ou photos manquantes
+    Route::get('a-completer', [DossierController::class, 'aCompleter'])
+        ->middleware('role:secretaire,docteur,photographe,radiologue')->name('dossiers.a-completer');
+
     // Réception
     Route::middleware('role:secretaire')->group(function () {
         Route::get('fiches', [PatientController::class, 'fiches'])->name('fiches.index');
@@ -85,6 +89,7 @@ Route::middleware(['auth', 'verified', 'role'])->group(function () {
         Route::post('agenda', [AgendaController::class, 'store'])->name('agenda.store');
         Route::get('patients/{patient}/actes', [AgendaController::class, 'actesPatient'])->name('patients.actes');
         Route::post('patients/{patient}/tablette', [\App\Http\Controllers\PatientController::class, 'versTablette'])->name('patients.tablette');
+        Route::post('patients/{patient}/consentement', [\App\Http\Controllers\PatientController::class, 'consentementPapier'])->name('patients.consentement');
         Route::post('rdv-a-fixer/{aFixer}/retirer', [AgendaController::class, 'retirerAFixer'])->name('rdv-a-fixer.retirer');
         Route::get('a-rappeler', [DossierController::class, 'aRappeler'])->name('a-rappeler');
     });
@@ -151,6 +156,9 @@ Route::middleware(['auth', 'verified', 'role'])->group(function () {
     Route::middleware('role:admin_finance')->group(function () {
         Route::post('dossiers/{dossier}/paiements', [FinanceController::class, 'store'])->name('paiements.store');
         Route::get('paiements/{paiement}/recu', [FinanceController::class, 'recu'])->name('paiements.recu');
+        // Devis imprimable (actes à faire du dossier, ou plan proposé après la consultation)
+        Route::get('dossiers/{dossier}/devis', [\App\Http\Controllers\DevisController::class, 'dossier'])->name('devis.dossier');
+        Route::get('plans/{plan}/devis', [\App\Http\Controllers\DevisController::class, 'plan'])->name('devis.plan');
     });
     Route::middleware('role:admin')->group(function () {
         Route::get('impayes', [FinanceController::class, 'impayes'])->name('finance.impayes');

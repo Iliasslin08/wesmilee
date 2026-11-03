@@ -27,6 +27,7 @@ export type Patient = {
     allergies?: string | null;
     vient_de_loin?: boolean;
     fiche_a_completer?: boolean;
+    consentement_le?: string | null;
     dossier?: { id: number; numero: string } | null;
     [k: string]: unknown;
 };
