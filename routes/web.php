@@ -63,6 +63,10 @@ Route::middleware(['auth', 'verified', 'role'])->group(function () {
         Route::get('ordonnances/{ordonnance}/imprimer', [\App\Http\Controllers\OrdonnanceController::class, 'imprimer'])->name('ordonnances.imprimer');
     });
 
+    // Ajouter une radio au dossier : radiologie, et réception / docteur (import de la panoramique)
+    Route::post('dossiers/{dossier}/radios', [\App\Http\Controllers\RadioController::class, 'store'])
+        ->middleware('role:radiologue,secretaire,docteur')->name('radios.store');
+
     // Devis accepté mais radio et/ou photos manquantes
     Route::get('a-completer', [DossierController::class, 'aCompleter'])
         ->middleware('role:secretaire,docteur,photographe,radiologue')->name('dossiers.a-completer');
@@ -169,7 +173,6 @@ Route::middleware(['auth', 'verified', 'role'])->group(function () {
     // Radiologie (Ikram)
     Route::middleware('role:radiologue')->group(function () {
         Route::get('radiologie', [\App\Http\Controllers\RadioController::class, 'index'])->name('radio.index');
-        Route::post('dossiers/{dossier}/radios', [\App\Http\Controllers\RadioController::class, 'store'])->name('radios.store');
     });
 
     // Chef (et développeur) : supprimer / restaurer un dossier

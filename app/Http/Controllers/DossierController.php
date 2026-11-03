@@ -95,6 +95,8 @@ class DossierController extends Controller
                 'prix' => $user->hasRole(Role::Finance),
                 'documents' => $user->hasRole(Role::Reception, Role::Docteur, Role::Photographe, Role::Radio),
                 'radio' => $user->role === Role::Radio,
+                // Importer la radio panoramique dans le dossier
+                'panoramique' => $user->hasRole(Role::Radio, Role::Reception, Role::Docteur),
                 'demanderRadio' => $user->hasRole(Role::Docteur, Role::Reception),
                 'labo' => $user->hasRole(Role::Docteur, Role::Reception, Role::Finance),
                 'rdvTous' => $user->hasRole(Role::Reception),

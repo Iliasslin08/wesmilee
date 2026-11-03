@@ -79,6 +79,9 @@ class Dossier extends Model
         return $this->hasMany(PlanAValider::class);
     }
 
+    /** Repère des patients ajoutés depuis l'agenda de l'ancien logiciel sans leur n° de dossier papier. */
+    public const SANS_NUMERO = 'N° de dossier papier inconnu';
+
     /** Photos cliniques du patient (la photo de la carte ne compte pas). */
     public const TYPES_PHOTOS = ['photo_avant', 'photo_apres'];
 
@@ -138,6 +141,9 @@ class Dossier extends Model
     {
         $a = [];
         $p = $this->patient;
+        if (blank($this->ancien_numero_papier) && str_contains((string) $this->notes, self::SANS_NUMERO)) {
+            $a[] = ['type' => 'danger', 'texte' => self::SANS_NUMERO.' : patient pas trouvé dans la base, retrouvez son dossier papier et notez l’ancien n° (onglet Identité)'];
+        }
         if (filled($p->allergies)) {
             $a[] = ['type' => 'danger', 'texte' => 'Allergie : '.$p->allergies];
         }

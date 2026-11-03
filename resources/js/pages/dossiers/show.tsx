@@ -109,7 +109,8 @@ type RadioD = {
     notes: string | null;
     created_at: string;
     vue_labo_le: string | null;
-    faite_par: User | null;
+    faite_par: number | null;
+    faire_par?: User | null;
     documents: { id: number; nom_original: string | null }[];
 };
 type AFixer = { id: number; mission: string; notes: string | null; docteur: User | null; demande_par: User | null };
@@ -178,6 +179,7 @@ type Props = {
     peut: {
         demanderRadio: boolean;
         radio: boolean;
+        panoramique?: boolean;
         identite: boolean;
         medical: boolean;
         actes?: boolean;
@@ -200,6 +202,7 @@ type Onglet =
     | 'ordonnances'
     | 'plan'
     | 'papier'
+    | 'panoramique'
     | 'seances'
     | 'dents'
     | 'medical'
@@ -410,6 +413,10 @@ export default function DossierShow(props: Props) {
                             label: `Dossier papier (${props.documents.filter((d) => d.type === 'ancien_dossier').length})`,
                         },
                         {
+                            value: 'panoramique',
+                            label: `Radio panoramique (${props.radios.filter((r) => r.type === 'panoramique').length})`,
+                        },
+                        {
                             value: 'seances',
                             label: `Séances (${props.seances.length})`,
                         },
@@ -445,6 +452,7 @@ export default function DossierShow(props: Props) {
             {onglet === 'apercu' && <Apercu {...props} onOnglet={setOnglet} />}
             {onglet === 'plan' && <Plan {...props} onPapier={() => setOnglet('papier')} />}
             {onglet === 'papier' && <DossierPapier {...props} />}
+            {onglet === 'panoramique' && <Panoramique {...props} />}
             {onglet === 'seances' && <Seances seances={props.seances} />}
             {onglet === 'dents' && <Dents {...props} onPlan={() => setOnglet('plan')} />}
             {onglet === 'medical' && <Medical {...props} />}
@@ -2085,7 +2093,7 @@ function Labo({ commandes, dossier, peut, radios }: Props) {
                                 <div>
                                     <b>{r.type_label}</b> {r.dents && `· dents ${r.dents}`}{' '}
                                     <span className="text-muted-foreground">
-                                        · {dateFr(r.created_at)} · {r.faite_par?.name}
+                                        · {dateFr(r.created_at)} · {r.faire_par?.name}
                                     </span>
                                     {r.mesures && <div className="font-semibold text-teal-800 dark:text-teal-200">Mesures : {r.mesures}</div>}
                                     {r.notes && <div className="text-muted-foreground">{r.notes}</div>}
@@ -2505,6 +2513,79 @@ function DossierPapier({ documents, typesDocuments, dossier, peut }: Props) {
     );
 }
 
+/* ---------------- Radio panoramique ---------------- */
+function Panoramique({ radios, dossier, peut }: Props) {
+    const panos = radios.filter((r) => r.type === 'panoramique');
+    const estImage = (n: string | null) => /\.(jpe?g|png|webp|heic|gif|bmp)$/i.test(n ?? '');
+    const form = useForm<{ type: string; dents: string; notes: string; fichiers: File[] }>({ type: 'panoramique', dents: '', notes: '', fichiers: [] });
+    const errs = form.errors as Record<string, string>;
+    return (
+        <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
+            {peut.panoramique && (
+                <Box titre="Importer une radio panoramique">
+                    <div className="flex flex-col gap-3">
+                        <label className="flex cursor-pointer flex-col items-center gap-1 rounded-xl border-2 border-dashed border-teal-300 bg-teal-50/40 p-5 text-center text-sm hover:bg-teal-50 dark:bg-teal-950/20">
+                            <ScanLine className="size-7 text-teal-700" />
+                            <span className="font-semibold">
+                                {form.data.fichiers.length ? `${form.data.fichiers.length} fichier(s) prêt(s)` : 'Choisir la radio panoramique (image ou PDF)'}
+                            </span>
+                            <span className="text-muted-foreground">{form.data.fichiers.map((f) => f.name).join(', ') || 'Fichier exporté de l’appareil de radio'}</span>
+                            <input
+                                type="file"
+                                multiple
+                                accept="image/*,application/pdf,.dcm"
+                                className="hidden"
+                                onChange={(e) => form.setData('fichiers', Array.from(e.target.files ?? []))}
+                            />
+                        </label>
+                        {(errs.fichiers || errs['fichiers.0']) && <p className="text-sm text-red-600">{errs.fichiers || errs['fichiers.0']}</p>}
+                        <Field label="Remarques">
+                            <textarea className={textareaCls} value={form.data.notes} onChange={(e) => form.setData('notes', e.target.value)} />
+                        </Field>
+                        <Button
+                            disabled={form.data.fichiers.length === 0 || form.processing}
+                            onClick={() =>
+                                form.post(`/dossiers/${dossier.id}/radios`, {
+                                    forceFormData: true,
+                                    preserveScroll: true,
+                                    onSuccess: () => form.reset('dents', 'notes', 'fichiers'),
+                                })
+                            }
+                        >
+                            Importer la radio panoramique
+                        </Button>
+                    </div>
+                </Box>
+            )}
+            <Box titre={`Radios panoramiques (${panos.length}) · cliquez sur une radio pour la voir en grand`}>
+                {panos.length === 0 ? (
+                    <Empty>Pas encore de radio panoramique.</Empty>
+                ) : (
+                    <div className="grid gap-4 xl:grid-cols-2">
+                        {panos.flatMap((r) =>
+                            r.documents.map((d) => (
+                                <div key={d.id} className="overflow-hidden rounded-lg border bg-card text-xs hover:shadow-md">
+                                    <a href={`/documents/${d.id}`} target="_blank" rel="noreferrer" title="Cliquer pour voir en grand">
+                                        {estImage(d.nom_original) ? (
+                                            <img src={`/documents/${d.id}`} alt="Radio panoramique" loading="lazy" className="h-56 w-full bg-black object-contain" />
+                                        ) : (
+                                            <div className="flex h-56 items-center justify-center bg-muted text-base font-semibold">PDF / fichier</div>
+                                        )}
+                                    </a>
+                                    <div className="p-2">
+                                        <b>{dateFr(r.created_at)}</b> · {r.faire_par?.name ?? '—'}
+                                        {r.notes && <div className="mt-1 text-muted-foreground">{r.notes}</div>}
+                                    </div>
+                                </div>
+                            )),
+                        )}
+                    </div>
+                )}
+            </Box>
+        </div>
+    );
+}
+
 /* ---------------- Identité ---------------- */
 function Identite({ dossier, peut, antecedentsListe }: Props) {
     const p = dossier.patient;
@@ -2524,6 +2605,7 @@ function Identite({ dossier, peut, antecedentsListe }: Props) {
         antecedents_autres: s('antecedents_autres'),
         allergies: s('allergies'),
         traitements: s('traitements'),
+        ancien_numero_papier: dossier.ancien_numero_papier ?? '',
     });
     const champ = (k: Exclude<keyof typeof form.data, 'antecedents'>, label: string, type = 'text') => (
         <Field label={label} error={form.errors[k]}>
@@ -2538,6 +2620,7 @@ function Identite({ dossier, peut, antecedentsListe }: Props) {
                 {champ('prenom', 'Prénom')}
                 {champ('date_naissance', 'Date de naissance', 'date')}
                 {champ('cin', 'N° CIN')}
+                {champ('ancien_numero_papier', 'Ancien n° de dossier papier')}
                 {champ('telephone', 'Téléphone')}
                 {champ('email', 'E-mail')}
                 {champ('ville', 'Ville')}
