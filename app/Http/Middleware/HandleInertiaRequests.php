@@ -70,7 +70,7 @@ class HandleInertiaRequests extends Middleware
             // Plans proposés après consultation, à présenter au patient (finance / chef)
             'plansAValider' => fn () => $request->user()?->hasRole(\App\Enums\Role::Finance) ? \App\Models\PlanAValider::where('statut', 'en_attente')->count() : 0,
             // Dossiers au devis accepté sans radio et/ou sans photos (badge « Radio / photos manquantes »)
-            'dossiersACompleter' => fn () => $request->user()?->hasRole(\App\Enums\Role::Reception, \App\Enums\Role::Docteur, \App\Enums\Role::Photographe, \App\Enums\Role::Radio)
+            'dossiersACompleter' => fn () => $request->user()?->hasRole(\App\Enums\Role::Reception, \App\Enums\Role::Photographe, \App\Enums\Role::Radio)
                 ? \App\Models\Dossier::aCompleter()->count() : 0,
             // Nouveaux avis patients (badge du menu du chef)
             'avisNonLus' => fn () => $request->user()?->isAdmin() ? \App\Models\Avis::whereNull('lu_le')->count() : 0,

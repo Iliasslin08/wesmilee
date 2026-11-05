@@ -15,8 +15,8 @@ use Illuminate\View\View;
 
 /**
  * Carte patient : photo + n° de dossier + nom + QR code.
- * Le QR ouvre la page « Mon dossier » du patient (toujours à jour, sans radios),
- * protégée par un code : les 4 derniers chiffres de son téléphone.
+ * Le QR ouvre « Mon espace » complet du patient (toujours à jour, sans radios),
+ * protégé par un code : les 4 derniers chiffres de son téléphone.
  */
 class CarteController extends Controller
 {
@@ -45,17 +45,18 @@ class CarteController extends Controller
     }
 
     /** Page publique ouverte par le QR code. */
-    public function public(Request $request, string $token): View
+    public function public(Request $request, string $token): View|RedirectResponse
     {
         $patient = Patient::where('carte_token', $token)->firstOrFail();
         if (! $request->session()->get("carte.$token")) {
             return view('carte-code', ['token' => $token, 'erreur' => null]);
         }
 
-        // La carte ouvre aussi « Mon espace » (prendre un rendez-vous)
+        // Carte scannée + bon code : « Mon espace » complet (messages, soins, paiements, mutuelle…)
         $request->session()->put('espace.patient_id', $patient->id);
+        $request->session()->put('espace.complet', true);
 
-        return view('carte-dossier', self::donnees($patient));
+        return redirect()->route('espace.index');
     }
 
     /** Photo du patient sur sa page (seulement après le code). */
@@ -72,16 +73,20 @@ class CarteController extends Controller
     {
         $patient = Patient::where('carte_token', $token)->firstOrFail();
         $cle = 'carte:'.$token.'|'.$request->ip();
-        if (RateLimiter::tooManyAttempts($cle, 5)) {
+        $cleCarte = 'carte:'.$token; // limite aussi par carte, quelle que soit l'adresse (carte perdue / volée)
+        if (RateLimiter::tooManyAttempts($cle, 5) || RateLimiter::tooManyAttempts($cleCarte, 10)) {
             return view('carte-code', ['token' => $token, 'erreur' => \App\Support\Langue::t('Trop d’essais. Réessayez dans quelques minutes.', 'محاولات كثيرة. أعيدوا المحاولة بعد بضع دقائق.')]);
         }
         $attendu = substr(preg_replace('/\D/', '', (string) $patient->telephone), -4);
         if ($attendu === '' || preg_replace('/\D/', '', (string) $request->input('code')) !== $attendu) {
             RateLimiter::hit($cle, 300);
+            RateLimiter::hit($cleCarte, 3600);
 
             return view('carte-code', ['token' => $token, 'erreur' => \App\Support\Langue::t('Code incorrect.', 'الرمز غير صحيح.')]);
         }
         RateLimiter::clear($cle);
+        RateLimiter::clear($cleCarte);
+        $request->session()->regenerate();
         $request->session()->put("carte.$token", true);
 
         return redirect()->route('carte.public', $token);

@@ -214,6 +214,33 @@ class PatientController extends Controller
             'antecedents_autres' => ['nullable', 'string', 'max:1000'],
             'allergies' => ['nullable', 'string', 'max:500'],
             'traitements' => ['nullable', 'string', 'max:500'],
+            'mutuelle' => ['nullable', 'in:'.implode(',', array_keys(Patient::MUTUELLES))],
+            'mutuelle_numero' => ['nullable', 'string', 'max:40'],
         ]);
+    }
+
+    /** « Mon espace » : l'accueil crée un nouveau mot de passe, affiché une seule fois pour le donner au patient. */
+    public function espaceMotDePasse(Request $request, Patient $patient): RedirectResponse
+    {
+        $mdp = collect(str_split('abcdefghjkmnpqrstuvwxyz23456789'))->random(8)->implode('');
+        $patient->update(['mot_de_passe_espace' => \Illuminate\Support\Facades\Hash::make($mdp)]);
+        \Inertia\Inertia::flash('espace_mdp', $mdp);
+        $this->ok('Nouveau mot de passe « Mon espace » créé : donnez-le au patient.');
+
+        return back();
+    }
+
+    /** Message au patient (Mon espace + SMS s'il a accepté les SMS). */
+    public function message(Request $request, Patient $patient): RedirectResponse
+    {
+        $data = $request->validate([
+            'type' => ['required', 'in:'.implode(',', array_keys(\App\Models\MessagePatient::TYPES))],
+            'titre' => ['required', 'string', 'max:120'],
+            'texte' => ['required', 'string', 'max:500'],
+        ]);
+        $m = \App\Services\Messagerie::envoyer($patient, $data['type'], $data['titre'], $data['texte'], $request->user()->id);
+        $this->ok('Message envoyé dans « Mon espace »'.($m?->sms_envoye ? ' et par SMS.' : '.'));
+
+        return back();
     }
 }

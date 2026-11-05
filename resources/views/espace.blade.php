@@ -1,81 +1,81 @@
-@php $t = fn ($fr, $ar) => \App\Support\Langue::t($fr, $ar); $AR = \App\Support\Langue::ar(); $slogan = !empty($cabinet['slogan'] ?? null) ? ($AR && $cabinet['slogan'] === 'Urgence dentaire 24h/24' ? 'طوارئ الأسنان 24/24' : $cabinet['slogan']) : null; @endphp
+@php $t = fn ($fr, $ar) => \App\Support\Langue::t($fr, $ar); $AR = \App\Support\Langue::ar(); @endphp
 @php
     $dh = fn ($n) => number_format((float) $n, 0, ',', ' ').' DH';
     $methodes = ['especes' => 'Espèces', 'carte' => 'Carte', 'cheque' => 'Chèque', 'virement' => 'Virement'];
+    $nouveauxMsg = $complet ? $messages->whereNull('lu_le')->count() : 0;
+    $liens = [['#rdv', $t('Rendez-vous', 'المواعيد')]];
+    if ($complet) {
+        $liens = array_merge($liens, [['#messages', $t('Messages', 'الرسائل')], ['#traitement', $t('Traitement', 'العلاج')], ['#paiements', $t('Paiements', 'المدفوعات')], ['#mutuelle', $t('Mutuelle', 'التأمين')]]);
+    }
 @endphp
 <!DOCTYPE html>
 <html lang="{{ $AR ? 'ar' : 'fr' }}" dir="{{ $AR ? 'rtl' : 'ltr' }}">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf-token" content="{{ csrf_token() }}">
-<title>Mon espace · {{ $patient->nom_complet }}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap">
+<title>{{ $t('Mon espace', 'فضائي') }} · {{ $patient->nom_complet }}</title>
+@include('partials.site-style')
 <style>
-  * { box-sizing: border-box; }
-  body { margin: 0; font-family: 'Poppins', Arial, sans-serif; background: #eef7f8; color: #12303a; font-size: 15px; }
-  .haut { background: linear-gradient(160deg, #048ea7, #0b5f6b); color: #fff; padding: 18px 16px 64px; }
-  .haut .l { display: flex; align-items: center; gap: 12px; max-width: 560px; margin: 0 auto; }
-  .ph { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; background: rgba(255,255,255,.25); flex: none; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 20px; }
-  .haut h1 { margin: 0; font-size: 18px; } .haut p { margin: 0; font-size: 13px; opacity: .85; }
-  .haut a { margin-inline-start: auto; color: #fff; font-size: 13px; opacity: .85; }
-  .wrap { max-width: 560px; margin: -48px auto 0; padding: 0 14px 28px; }
-  .carte { background: #fff; border-radius: 18px; padding: 16px; box-shadow: 0 10px 30px rgba(11,95,107,.10); margin-bottom: 12px; }
-  h2 { font-size: 15px; margin: 0 0 10px; color: #0b5f6b; }
-  .ok { background: #e3f4d6; color: #2c5f0e; border-radius: 12px; padding: 12px; font-weight: 600; margin-bottom: 12px; }
-  .err { background: #fdecea; color: #b3261e; border-radius: 10px; padding: 10px 12px; font-size: 14px; margin-bottom: 10px; }
-  .rdv { background: linear-gradient(135deg, #048ea7, #0b6f8a); color: #fff; }
-  .rdv h2 { color: #c8f1f5; } .rdv .date { font-size: 22px; font-weight: 700; } .rdv .date::first-letter { text-transform: uppercase; }
+  .accueil { padding: 34px 0 70px; }
+  .accueil .conteneur { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .ph { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; background: rgba(255,255,255,.2); border: 3px solid rgba(255,255,255,.5); flex: none; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 28px; }
+  .accueil h1 { margin: 0; font-size: clamp(22px, 3vw, 32px); }
+  .chiffres { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: -46px; position: relative; }
+  .chiffres .carte { margin: 0; padding: 16px 18px; } .chiffres small { color: var(--m); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+  .chiffres b { display: block; font-size: 19px; color: var(--f); margin-top: 2px; } .chiffres .rouge { color: #b3261e; } .chiffres .vert { color: #3d7a12; }
+  .colonnes { columns: 2 440px; column-gap: 20px; margin-top: 22px; }
+  .rdv { background: linear-gradient(135deg, #048ea7, #0b5f6b); color: #fff; border: 0; }
+  .rdv h2 { color: #fff; } .rdv h2 .ic { background: rgba(255,255,255,.18); } .rdv .date { font-size: 22px; font-weight: 700; } .rdv .date::first-letter { text-transform: uppercase; }
   .puces { display: flex; gap: 8px; flex-wrap: wrap; }
-  .puce { border: 1.5px solid #cfe2e5; background: #fff; border-radius: 999px; padding: 8px 16px; font: 600 14px 'Poppins', Arial; color: #12303a; cursor: pointer; }
-  .puce.actif { background: #048ea7; border-color: #048ea7; color: #fff; }
-  label { display: block; font-size: 13px; font-weight: 600; color: #48616a; margin: 12px 0 6px; }
-  input[type=date] { width: 100%; font: 16px 'Poppins', Arial; padding: 10px 12px; border: 1.5px solid #cfe2e5; border-radius: 10px; }
+  .puce { border: 1.5px solid #cfe2e5; background: #fff; border-radius: 999px; padding: 8px 16px; font: 600 14px Poppins, Arial; color: var(--t); cursor: pointer; }
+  .puce.actif { background: var(--p); border-color: var(--p); color: #fff; }
   .grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; }
   .grille .vide { grid-column: 1 / -1; }
-  .grille .lien { background: none; border: 0; color: #048ea7; font: 600 14px Poppins, Arial; text-decoration: underline; cursor: pointer; padding: 0; margin-top: 6px; }
-  .h { border: 1.5px solid #cfe2e5; background: #fff; border-radius: 10px; padding: 9px 0; font: 600 14px 'Poppins', Arial; cursor: pointer; color: #12303a; }
-  .h.actif { background: #048ea7; border-color: #048ea7; color: #fff; }
-  .vide { color: #6b8189; font-size: 14px; padding: 6px 0; }
-  .btn { width: 100%; margin-top: 14px; padding: 13px; font: 700 16px 'Poppins', Arial; color: #fff; background: #048ea7; border: 0; border-radius: 12px; cursor: pointer; }
-  .btn:disabled { opacity: .45; }
-  ul { list-style: none; padding: 0; margin: 0; } li { padding: 9px 0; border-bottom: 1px solid #e8f1f2; } li:last-child { border: 0; }
-  .muted { color: #6b8189; font-size: 13px; }
-  .infos { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 14px; } .infos dt { color: #6b8189; } .infos dd { margin: 0; font-weight: 600; }
-  .pill { float: inline-end; border-radius: 20px; padding: 1px 10px; font-size: 12px; font-weight: 600; }
-  .p-ok { background: #e3f4d6; color: #3d7a12; } .p-cours { background: #dff4f6; color: #037786; } .p-att { background: #fff1c9; color: #7a5a00; }
-  .totaux { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
-  .totaux div { background: #f3f9f9; border-radius: 10px; padding: 8px 4px; font-size: 13px; } .totaux b { display: block; font-size: 16px; }
-  .reste b { color: #b3261e; } .solde b { color: #3d7a12; }
-  details summary { cursor: pointer; font-weight: 600; color: #0b5f6b; }
-  .pied { text-align: center; color: #6b8189; font-size: 12px; margin-top: 8px; }
+  .grille .lien { background: none; border: 0; color: var(--p); font: 600 14px Poppins, Arial; text-decoration: underline; cursor: pointer; padding: 0; margin-top: 6px; }
+  .h { border: 1.5px solid #cfe2e5; background: #fff; border-radius: 10px; padding: 9px 0; font: 600 14px Poppins, Arial; cursor: pointer; color: var(--t); }
+  .h.actif { background: var(--p); border-color: var(--p); color: #fff; }
+  .vide { color: var(--m); font-size: 14px; padding: 6px 0; }
+  @media (max-width: 700px) { .chiffres { grid-template-columns: 1fr; } .accueil { padding: 24px 0 64px; } }
 </style>
 </head>
 <body>
-@include('partials.langue')
-<div class="haut">
-  <div class="l">
+@include('partials.site-nav', ['liens' => $liens, 'quitter' => true])
+
+<section class="bandeau accueil">
+  <div class="conteneur">
     @if ($photo)<img class="ph" src="{{ route('espace.photo') }}" alt="">@else<div class="ph">{{ mb_substr($patient->prenom ?? $patient->nom, 0, 1) }}</div>@endif
     <div>
       <h1>{{ $t('Bonjour', 'مرحبا') }} {{ $patient->prenom }}</h1>
-      <p>{{ $t('Dossier n°', 'ملف رقم') }} {{ $dossier?->numero }}</p>
+      <p>{{ $t('Dossier n°', 'ملف رقم') }} {{ $dossier?->numero }} · {{ $cabinet['nom'] ?? 'Wesmile Center' }}</p>
     </div>
-    <form method="post" action="{{ route('espace.deconnexion') }}" style="margin-inline-start:auto;margin-top:34px">@csrf<button style="background:none;border:0;color:#fff;font:13px Poppins,Arial;opacity:.85;cursor:pointer">{{ $t('Quitter', 'خروج') }}</button></form>
   </div>
-</div>
-<div class="wrap">
-  @if (session('ok'))<div class="ok">✓ {{ session('ok') }}</div>@endif
+</section>
 
+<main class="conteneur">
+  <div class="chiffres">
+    <div class="carte"><small>{{ $t('Prochain rendez-vous', 'الموعد القادم') }}</small><b>{{ $prochain ? $prochain->debut->format('d/m/Y H:i') : $t('Aucun', 'لا يوجد') }}</b></div>
+    @if ($complet)
+      <div class="carte"><small>{{ $t('Reste à payer', 'الباقي للأداء') }}</small><b class="{{ $reste > 0 ? 'rouge' : 'vert' }}">{{ $reste > 0 ? $dh($reste) : $t('Soldé', 'مؤدى بالكامل') }}</b></div>
+      <div class="carte"><small>{{ $t('Messages', 'الرسائل') }}</small><b>@if ($nouveauxMsg) <a href="#messages" style="text-decoration:none">{{ $nouveauxMsg }} {{ $t('nouveau(x)', 'جديدة') }}</a> @else {{ $t('Rien de nouveau', 'لا جديد') }} @endif</b></div>
+    @else
+      <div class="carte"><small>{{ $t('Dossier complet', 'الملف الكامل') }}</small><b style="font-size:15px">{{ $t('Avec le mot de passe ou la carte QR', 'بكلمة السر أو بطاقة QR') }}</b></div>
+      <div class="carte"><small>{{ $t('Besoin d’aide ?', 'تحتاجون مساعدة؟') }}</small><b style="font-size:15px">{{ $cabinet['telephone'] ?? '' }}</b></div>
+    @endif
+  </div>
+
+  @if (session('ok'))<div class="ok" style="margin-top:20px">✓ {{ session('ok') }}</div>@endif
+
+  <div class="colonnes">
   @if ($prochain)
-    <div class="carte rdv">
-      <h2>{{ $t('Mon prochain rendez-vous', 'موعدي القادم') }}</h2>
+    <div class="carte rdv" id="rdv">
+      <h2><span class="ic">📅</span>{{ $t('Mon prochain rendez-vous', 'موعدي القادم') }}</h2>
       <div class="date">{{ \App\Support\Langue::date($prochain->debut) }} {{ $t('à', 'على الساعة') }} {{ $prochain->debut->format('H:i') }}</div>
       <div>{{ \App\Support\Langue::mot($prochain->mission) }} · {{ $prochain->docteur?->name }}</div>
       <div style="font-size:13px;opacity:.85;margin-top:8px">{{ $t('Pour changer ou annuler, appelez le centre', 'للتغيير أو الإلغاء، اتصلوا بالمركز') }}{{ !empty($cabinet['telephone']) ? ' '.$t('au', 'على الرقم').' '.$cabinet['telephone'] : '' }}.</div>
     </div>
   @else
-    <div class="carte">
-      <h2>{{ $t('Prendre un rendez-vous', 'حجز موعد') }}</h2>
+    <div class="carte" id="rdv">
+      <h2><span class="ic">📅</span>{{ $t('Prendre un rendez-vous', 'حجز موعد') }}</h2>
       @if ($errors->any())<div class="err">{{ $errors->first() }}</div>@endif
       <form method="post" action="{{ route('espace.reserver') }}" id="f">
         @csrf
@@ -95,13 +95,19 @@
     </div>
   @endif
 
-  {{-- Mon espace = prendre rendez-vous uniquement. Le dossier (traitement, paiements…) se consulte avec la carte QR. --}}
 
+  @if ($complet)
+    @include('partials.espace-dossier')
+  @else
+    <div class="carte">
+      <h2><span class="ic">🔒</span>{{ $t('Mon dossier complet', 'ملفي الكامل') }}</h2>
+      <div class="muted">{{ $t('Pour voir vos soins, votre schéma dentaire, vos paiements, votre mutuelle et vos messages : scannez le QR code de votre carte patient, ou demandez votre mot de passe à l’accueil.', 'لرؤية علاجاتكم وخريطة أسنانكم ومدفوعاتكم وتأمينكم ورسائلكم: امسحوا رمز QR لبطاقتكم، أو اطلبوا كلمة السر من الاستقبال.') }}</div>
+    </div>
+  @endif
+  </div>
+</main>
 
-  <div class="pied">{{ $cabinet['nom'] ?? 'Wesmile Center' }} · {{ $cabinet['ville'] ?? 'Rabat' }}@if (!empty($cabinet['telephone'])) · {{ $cabinet['telephone'] }}@endif
-    @if ($slogan)<br><b>{{ $slogan }}</b>@endif
-    @if (!empty($cabinet['site'])) · {{ $cabinet['site'] }}@endif<br>{{ $t('Informations confidentielles.', 'معلومات سرية.') }}</div>
-</div>
+@include('partials.site-pied')
 @if (! $prochain)
 <script>
   const grille = document.getElementById('grille'), ok = document.getElementById('ok'), heure = document.getElementById('heure');

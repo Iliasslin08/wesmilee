@@ -49,7 +49,11 @@ class EspacePatientController extends Controller
         if (RateLimiter::tooManyAttempts($cle, 5)) {
             return back()->withErrors(['telephone' => \App\Support\Langue::t('Trop d’essais. Réessayez dans quelques minutes.', 'محاولات كثيرة. أعيدوا المحاولة بعد بضع دقائق.')])->withInput();
         }
-        $patient = $this->trouver($data['telephone'], $data['preuve']);
+        // Mot de passe donné par l'accueil → dossier complet ; date de naissance / n° de dossier → prise de RDV seulement
+        $patient = $this->parTelephone($data['telephone'])
+            ->first(fn ($p) => $p->mot_de_passe_espace && \Illuminate\Support\Facades\Hash::check($data['preuve'], $p->mot_de_passe_espace));
+        $complet = (bool) $patient;
+        $patient ??= $this->trouver($data['telephone'], $data['preuve']);
         if (! $patient) {
             RateLimiter::hit($cle, 300);
 
@@ -58,6 +62,7 @@ class EspacePatientController extends Controller
         RateLimiter::clear($cle);
         $request->session()->regenerate();
         $request->session()->put('espace.patient_id', $patient->id);
+        $request->session()->put('espace.complet', $complet);
 
         return redirect()->route('espace.index');
     }
@@ -80,6 +85,7 @@ class EspacePatientController extends Controller
         Dossier::create(['patient_id' => $patient->id]);
         $request->session()->regenerate();
         $request->session()->put('espace.patient_id', $patient->id);
+        $request->session()->put('espace.complet', false);
 
         return redirect()->route('espace.index');
     }
@@ -90,8 +96,21 @@ class EspacePatientController extends Controller
             return redirect()->route('espace.accueil');
         }
         $prochain = $this->rdvAVenir($patient);
+        $complet = (bool) $request->session()->get('espace.complet');
+        $details = [];
+        if ($complet) {
+            $messages = $patient->messages()->limit(30)->get();
+            $details = [
+                'messages' => $messages,
+                'dents' => $patient->dossier?->etatsDents()->pluck('etat', 'dent')->all() ?? [],
+                'feuilles' => $patient->dossier?->feuillesSoins()->get() ?? collect(),
+            ];
+            // ouverts = lus (la pastille « nouveau » reste affichée cette fois-ci)
+            $patient->messages()->whereNull('lu_le')->update(['lu_le' => now()]);
+        }
 
-        return view('espace', CarteController::donnees($patient) + [
+        return view('espace', CarteController::donnees($patient) + $details + [
+            'complet' => $complet,
             'prochain' => $prochain,
             'motifs' => $this->motifsPour($patient),
             'jourMin' => now()->toDateString(),
@@ -163,9 +182,25 @@ class EspacePatientController extends Controller
         return redirect()->to(url()->previous().'#avis')->with('avis_ok', \App\Support\Langue::t('Merci pour votre commentaire !', 'شكرا على ملاحظتكم!'));
     }
 
+    /** Le patient change le mot de passe donné par l'accueil. */
+    public function motDePasse(Request $request): RedirectResponse
+    {
+        abort_unless(($patient = $this->patient($request)) && $request->session()->get('espace.complet'), 403);
+        $data = $request->validate([
+            'actuel' => ['required', 'string'],
+            'nouveau' => ['required', 'string', 'min:6', 'max:64', 'confirmed'],
+        ], [], ['actuel' => 'mot de passe actuel', 'nouveau' => 'nouveau mot de passe']);
+        if (! \Illuminate\Support\Facades\Hash::check($data['actuel'], (string) $patient->mot_de_passe_espace)) {
+            return redirect()->to(route('espace.index').'#mdp')->withErrors(['actuel' => \App\Support\Langue::t('Mot de passe actuel incorrect.', 'كلمة السر الحالية غير صحيحة.')]);
+        }
+        $patient->update(['mot_de_passe_espace' => \Illuminate\Support\Facades\Hash::make($data['nouveau'])]);
+
+        return redirect()->route('espace.index')->with('ok', \App\Support\Langue::t('Mot de passe changé.', 'تم تغيير كلمة السر.'));
+    }
+
     public function deconnexion(Request $request): RedirectResponse
     {
-        $request->session()->forget('espace.patient_id');
+        $request->session()->forget(['espace.patient_id', 'espace.complet']);
 
         return redirect()->route('espace.accueil');
     }

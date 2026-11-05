@@ -180,6 +180,11 @@ class LaboController extends Controller
         // Travail prêt : si la pose n'a pas encore de rendez-vous, la réception le voit dans « RDV à fixer »
         if ($commande->statut === StatutLabo::Pret) {
             $dossier = $commande->dossier;
+            if ($dossier?->patient) {
+                \App\Services\Messagerie::envoyer($dossier->patient, 'labo', 'Votre travail est prêt',
+                    'Votre '.mb_strtolower($commande->travail).($commande->dents ? ' ('.$commande->dents.')' : '').' est prêt(e) au laboratoire. '
+                    .'Le centre vous contacte pour le rendez-vous de pose.', $request->user()->id, 'labo-pret-'.$commande->id);
+            }
             $aRdv = $commande->acte_id && \App\Models\RendezVous::where('acte_id', $commande->acte_id)->where('debut', '>=', now())
                 ->whereIn('statut', ['planifie', 'arrive'])->exists();
             $dejaDemande = \App\Models\RdvAFixer::where('patient_id', $dossier->patient_id)->where('statut', 'en_attente')

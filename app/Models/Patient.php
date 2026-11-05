@@ -16,7 +16,10 @@ class Patient extends Model
 
     protected $guarded = ['id'];
 
-    protected $hidden = ['carte_token'];
+    protected $hidden = ['carte_token', 'mot_de_passe_espace'];
+
+    /** Mutuelles / organismes de remboursement. */
+    public const MUTUELLES = ['cnss' => 'CNSS (AMO)', 'cnops' => 'CNOPS', 'cmim' => 'CMIM', 'privee' => 'Assurance privée', 'aucune' => 'Aucune'];
 
     protected $casts = [
         'date_naissance' => 'date',
@@ -65,6 +68,11 @@ class Patient extends Model
     public function documents(): HasMany
     {
         return $this->hasMany(Document::class)->latest();
+    }
+
+    public function messages(): HasMany
+    {
+        return $this->hasMany(MessagePatient::class)->latest();
     }
 
     /**
@@ -146,14 +154,23 @@ class Patient extends Model
     }
 
     /**
-     * Adresse de base du QR code. Priorité : CARTE_URL (.env). Si elle manque ou pointe vers
-     * localhost / 127.0.0.1 (introuvable depuis un téléphone), on prend automatiquement
-     * l'adresse IP du PC sur le Wi-Fi.
+     * Adresse de base du QR code (doit être joignable depuis le téléphone du patient).
+     * 1) l'adresse avec laquelle l'équipe ouvre la plateforme (suit le PC si son IP change) ;
+     * 2) CARTE_URL / APP_URL du .env ;
+     * 3) l'adresse IP du PC sur le Wi-Fi.
+     * localhost / 127.0.0.1 ne sont jamais utilisés (introuvables depuis un téléphone).
      */
     public static function baseCarte(): string
     {
+        $local = fn (string $u) => (bool) preg_match('#//(localhost|127\.\d+\.\d+\.\d+|\[::1\])(:|/|$)#', $u);
+        if (! app()->runningInConsole()) {
+            $ici = rtrim(request()->getSchemeAndHttpHost(), '/');
+            if ($ici && ! $local($ici)) {
+                return $ici;
+            }
+        }
         $base = rtrim((string) (config('cabinet.carte_url') ?: url('/')), '/');
-        if (! preg_match('#//(localhost|127\.0\.0\.1)(:|/|$)#', $base)) {
+        if (! $local($base)) {
             return $base;
         }
         $ip = gethostbyname(gethostname());

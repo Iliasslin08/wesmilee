@@ -18,6 +18,13 @@ use App\Http\Controllers\SalleAttenteController;
 use App\Http\Controllers\SeanceController;
 use Illuminate\Support\Facades\Route;
 
+// Borne d'accueil : le patient tape son n° de dossier (ou téléphone) → arrivé + ticket avec son n° d'appel
+Route::get('borne', [\App\Http\Controllers\BorneController::class, 'index'])->name('borne');
+Route::post('borne', [\App\Http\Controllers\BorneController::class, 'arrivee'])->middleware('throttle:30,1')->name('borne.arrivee');
+Route::get('borne/premiere-visite', [\App\Http\Controllers\BorneController::class, 'premiere'])->name('borne.premiere');
+Route::post('borne/premiere-visite', [\App\Http\Controllers\BorneController::class, 'enregistrerPremiere'])->middleware('throttle:10,1')->name('borne.premiere.enregistrer');
+Route::post('borne/consultation', [\App\Http\Controllers\BorneController::class, 'sansRendezVous'])->middleware('throttle:10,1')->name('borne.consultation');
+
 // Fiche d'accueil sur la tablette (sans connexion)
 Route::get('accueil', [AccueilController::class, 'create'])->name('accueil');
 Route::post('accueil', [AccueilController::class, 'store'])->middleware('throttle:20,1')->name('accueil.store');
@@ -44,6 +51,7 @@ Route::middleware('espace.patient')->prefix('mon-espace')->name('espace.')->cont
     Route::get('creneaux', 'creneaux')->name('creneaux');
     Route::post('reserver', 'reserver')->middleware('throttle:10,1')->name('reserver');
     Route::post('avis', 'avis')->middleware('throttle:10,1')->name('avis');
+    Route::post('mot-de-passe', 'motDePasse')->middleware('throttle:10,1')->name('mot-de-passe');
     Route::get('photo', 'photo')->name('photo');
     Route::post('deconnexion', 'deconnexion')->name('deconnexion');
 });
@@ -94,6 +102,7 @@ Route::middleware(['auth', 'verified', 'role'])->group(function () {
         Route::get('patients/{patient}/actes', [AgendaController::class, 'actesPatient'])->name('patients.actes');
         Route::post('patients/{patient}/tablette', [\App\Http\Controllers\PatientController::class, 'versTablette'])->name('patients.tablette');
         Route::post('patients/{patient}/consentement', [\App\Http\Controllers\PatientController::class, 'consentementPapier'])->name('patients.consentement');
+        Route::post('patients/{patient}/espace-mot-de-passe', [\App\Http\Controllers\PatientController::class, 'espaceMotDePasse'])->name('patients.espace-mdp');
         Route::post('rdv-a-fixer/{aFixer}/retirer', [AgendaController::class, 'retirerAFixer'])->name('rdv-a-fixer.retirer');
         Route::get('a-rappeler', [DossierController::class, 'aRappeler'])->name('a-rappeler');
     });
@@ -104,6 +113,7 @@ Route::middleware(['auth', 'verified', 'role'])->group(function () {
         Route::post('rendez-vous/{rdv}/annuler', [AgendaController::class, 'annuler'])->name('rdv.annuler');
         Route::delete('rendez-vous/{rdv}', [AgendaController::class, 'supprimer'])->name('rdv.supprimer');
         Route::post('dossiers/{dossier}/prochain-rdv', [AgendaController::class, 'prochain'])->name('rdv.prochain');
+        Route::post('patients/{patient}/messages', [\App\Http\Controllers\PatientController::class, 'message'])->name('patients.message');
     });
     Route::get('agenda/creneaux', [AgendaController::class, 'creneaux'])->middleware('role:secretaire,docteur,admin_finance')->name('agenda.creneaux');
 
@@ -160,6 +170,8 @@ Route::middleware(['auth', 'verified', 'role'])->group(function () {
     Route::middleware('role:admin_finance')->group(function () {
         Route::post('dossiers/{dossier}/paiements', [FinanceController::class, 'store'])->name('paiements.store');
         Route::get('paiements/{paiement}/recu', [FinanceController::class, 'recu'])->name('paiements.recu');
+        Route::post('dossiers/{dossier}/feuilles-soins', [FinanceController::class, 'feuilleSoins'])->name('feuilles-soins.store');
+        Route::put('feuilles-soins/{feuille}', [FinanceController::class, 'feuilleSoinsStatut'])->name('feuilles-soins.statut');
         // Devis imprimable (actes à faire du dossier, ou plan proposé après la consultation)
         Route::get('dossiers/{dossier}/devis', [\App\Http\Controllers\DevisController::class, 'dossier'])->name('devis.dossier');
         Route::get('plans/{plan}/devis', [\App\Http\Controllers\DevisController::class, 'plan'])->name('devis.plan');

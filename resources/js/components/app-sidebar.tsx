@@ -39,7 +39,6 @@ const MENUS: Record<string, NavItem[]> = {
     docteur: [
         { title: 'Mes patients', href: '/mes-patients', icon: Stethoscope },
         { title: 'Tous les dossiers', href: '/patients', icon: BookUser },
-        { title: 'Radio / photos manquantes', href: '/a-completer', icon: Camera },
         { title: 'Mes horaires', href: '/mes-horaires', icon: Clock },
     ],
     admin_finance: [

@@ -21,10 +21,12 @@ const ecrire = (t: number) => {
  * Déconnexion automatique après X minutes sans activité (souris, clavier, toucher).
  * L'activité est partagée entre tous les onglets : un onglet oublié en arrière-plan
  * ne déconnecte plus la personne qui travaille dans un autre onglet.
+ * Jamais pendant une séance ouverte : le docteur soigne sans toucher l'ordinateur.
  */
 export function DeconnexionAuto() {
-    const { reglages } = usePage().props as unknown as { reglages?: { inactiviteMinutes: number } };
-    const minutes = reglages?.inactiviteMinutes ?? 0;
+    const { reglages, maSeance } = usePage().props as unknown as { reglages?: { inactiviteMinutes: number }; maSeance?: unknown };
+    // Séance en cours : pas de déconnexion automatique
+    const minutes = maSeance ? 0 : (reglages?.inactiviteMinutes ?? 0);
     const derniere = useRef(Date.now());
     const [reste, setReste] = useState<number | null>(null);
 

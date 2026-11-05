@@ -69,11 +69,7 @@ class SalleAttenteController extends Controller
 
     public function arrive(RendezVous $rdv): RedirectResponse
     {
-        $rdv->update(['statut' => StatutRdv::Arrive, 'arrive_le' => now(), 'numero_appel' => $rdv->numero_appel ?? self::prochainNumero()]);
-        if ($dossier = $rdv->patient->dossier) {
-            $dossier->acteDeVisite($rdv, auth()->id());
-            \App\Models\DemandeRadio::panoramiqueSiBesoin($dossier, auth()->id(), (string) $rdv->mission);
-        }
+        self::marquerArrive($rdv, auth()->id());
         if ($rdv->patient->fiche_a_completer) {
             $this->erreur("{$rdv->patient->nom_complet} est arrivé(e) · N° {$rdv->numero_appel}. ⚠ Fiche non remplie : envoyez le patient à la tablette.");
         } elseif (! $rdv->patient->consentement_le) {
@@ -223,5 +219,17 @@ class SalleAttenteController extends Controller
             Patient::where('statut_fiche', 'validee')->recherche($request->string('q')->toString())
                 ->with('dossier:id,patient_id,numero')->limit(8)->get(['id', 'nom', 'prenom', 'telephone', 'ville', 'cin', 'date_naissance'])
         );
+    }
+
+    /** Patient arrivé (réception ou borne) : n° d'appel, acte de la visite, radio si besoin. */
+    public static function marquerArrive(RendezVous $rdv, ?int $par = null): RendezVous
+    {
+        $rdv->update(['statut' => StatutRdv::Arrive, 'arrive_le' => $rdv->arrive_le ?? now(), 'numero_appel' => $rdv->numero_appel ?? self::prochainNumero()]);
+        if ($dossier = $rdv->patient->dossier) {
+            $dossier->acteDeVisite($rdv, $par);
+            \App\Models\DemandeRadio::panoramiqueSiBesoin($dossier, $par, (string) $rdv->mission);
+        }
+
+        return $rdv;
     }
 }

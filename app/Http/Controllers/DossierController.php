@@ -61,6 +61,13 @@ class DossierController extends Controller
             'equipeLabo' => User::equipeLabo()->get(['id', 'name', 'taches_principales', 'taches_secondaires']),
             'commandes' => $dossier->commandesLabo()->with('acte:id,libelle', 'technicien:id,name')->get()
                 ->map(fn ($c) => $c->toArray() + ['priorite' => $c->priorite()]),
+            // « Mon espace » du patient : messages, mutuelle, feuilles de soins
+            'messagesPatient' => $dossier->patient->messages()->with('envoyePar:id,name')->limit(20)->get(),
+            'espaceMdp' => filled($dossier->patient->mot_de_passe_espace),
+            'mutuelles' => \App\Models\Patient::MUTUELLES,
+            'typesMessages' => \App\Models\MessagePatient::TYPES,
+            'feuillesSoins' => $voitFinance ? $dossier->feuillesSoins()->with('creePar:id,name')->get() : [],
+            'statutsFeuilles' => \App\Models\FeuilleSoins::STATUTS,
             'plansDossier' => \App\Models\PlanAValider::where('dossier_id', $dossier->id)->where('statut', 'en_attente')
                 ->with('proposePar:id,name', 'docteur:id,name')->get(),
             'avis' => $user->isAdmin() ? $dossier->patient->avis()->get(['id', 'commentaire', 'created_at']) : [],
@@ -86,6 +93,8 @@ class DossierController extends Controller
             'demandesRadioDossier' => $dossier->demandesRadio()->where('statut', 'en_attente')->with('demandePar:id,name')->get(),
             'peut' => [
                 'identite' => $user->hasRole(Role::Reception),
+                'espace' => $user->hasRole(Role::Reception),
+                'message' => $user->hasRole(Role::Reception, Role::Docteur),
                 'medical' => $user->hasRole(Role::Docteur),
                 // Écrire des actes : docteur ; réception = reprise des anciens dossiers papier
                 'actes' => $user->hasRole(Role::Docteur, Role::Reception),

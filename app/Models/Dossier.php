@@ -74,6 +74,11 @@ class Dossier extends Model
         return $this->hasMany(CommandeLabo::class)->latest();
     }
 
+    public function feuillesSoins(): HasMany
+    {
+        return $this->hasMany(FeuilleSoins::class)->latest('remise_le');
+    }
+
     public function plans(): HasMany
     {
         return $this->hasMany(PlanAValider::class);

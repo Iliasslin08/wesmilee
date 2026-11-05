@@ -113,6 +113,8 @@ type RadioD = {
     faire_par?: User | null;
     documents: { id: number; nom_original: string | null }[];
 };
+type MessageP = { id: number; type: string; titre: string; texte: string; sms_envoye: boolean; lu_le: string | null; created_at: string; envoye_par: User | null };
+type FeuilleS = { id: number; organisme: string; montant: number; remise_le: string; statut: string; note: string | null; cree_par: User | null };
 type AFixer = { id: number; mission: string; notes: string | null; docteur: User | null; demande_par: User | null };
 type Rdv = {
     id: number;
@@ -181,6 +183,8 @@ type Props = {
         radio: boolean;
         panoramique?: boolean;
         identite: boolean;
+        espace?: boolean;
+        message?: boolean;
         medical: boolean;
         actes?: boolean;
         papier?: boolean;
@@ -194,6 +198,12 @@ type Props = {
         rdvMiens: number | null;
         envoyer: boolean;
     };
+    messagesPatient?: MessageP[];
+    espaceMdp?: boolean;
+    mutuelles?: Record<string, string>;
+    typesMessages?: Record<string, string>;
+    feuillesSoins?: FeuilleS[];
+    statutsFeuilles?: Record<string, string>;
     plansDossier: { id: number; actes: string; notes: string | null; created_at: string; propose_par: User | null; docteur: User | null }[];
 };
 
@@ -211,7 +221,8 @@ type Onglet =
     | 'documents'
     | 'identite'
     | 'rdv'
-    | 'carte';
+    | 'carte'
+    | 'espace';
 
 export default function DossierShow(props: Props) {
     const { dossier, alertes, peut, seanceOuverte, finance } = props;
@@ -444,6 +455,14 @@ export default function DossierShow(props: Props) {
                             label: `Ordonnances (${props.ordonnances.length})`,
                         },
                         { value: 'identite', label: 'Identité' },
+                        ...(peut.espace || peut.message
+                            ? [
+                                  {
+                                      value: 'espace' as Onglet,
+                                      label: `Mon espace patient (${props.messagesPatient?.length ?? 0})`,
+                                  },
+                              ]
+                            : []),
                         { value: 'rdv', label: 'Rendez-vous' },
                     ] as { value: Onglet; label: string }[]
                 }
@@ -462,6 +481,7 @@ export default function DossierShow(props: Props) {
             {onglet === 'carte' && props.carte && <CartePatient carte={props.carte} patient={props.dossier.patient} numero={props.dossier.numero} />}
             {onglet === 'ordonnances' && <Ordonnances {...props} />}
             {onglet === 'identite' && <Identite {...props} />}
+            {onglet === 'espace' && <EspacePatient {...props} />}
             {onglet === 'rdv' && (
                 <RendezVous
                     rdvs={props.rendezVous}
@@ -2187,7 +2207,13 @@ function Labo({ commandes, dossier, peut, radios }: Props) {
 }
 
 /* ---------------- Paiements ---------------- */
-function Paiements({ paiements, finance, dossier, peut }: Props & { finance: NonNullable<Props['finance']> }) {
+function Paiements({ paiements, finance, dossier, peut, feuillesSoins = [], mutuelles = {}, statutsFeuilles = {} }: Props & { finance: NonNullable<Props['finance']> }) {
+    const fs = useForm({
+        organisme: (dossier.patient.mutuelle as string | null) || 'cnss',
+        montant: '',
+        remise_le: new Date().toISOString().slice(0, 10),
+        note: '',
+    });
     const form = useForm({
         montant: '',
         methode: 'especes',
@@ -2290,6 +2316,70 @@ function Paiements({ paiements, finance, dossier, peut }: Props & { finance: Non
                     </Button>
                 </Box>
             )}
+            <Box titre="Feuilles de soins (mutuelle)">
+                {peut.finance && (
+                    <div className="mb-3 grid gap-3 md:grid-cols-5">
+                        <Field label="Organisme">
+                            <select className={inputCls} value={fs.data.organisme} onChange={(e) => fs.setData('organisme', e.target.value)}>
+                                {Object.entries(mutuelles).map(([k, v]) => (
+                                    <option key={k} value={k}>
+                                        {v}
+                                    </option>
+                                ))}
+                            </select>
+                        </Field>
+                        <Field label="Montant (DH)" error={fs.errors.montant}>
+                            <input type="number" className={inputCls} value={fs.data.montant} onChange={(e) => fs.setData('montant', e.target.value)} />
+                        </Field>
+                        <Field label="Remise le">
+                            <input type="date" className={inputCls} value={fs.data.remise_le} onChange={(e) => fs.setData('remise_le', e.target.value)} />
+                        </Field>
+                        <Field label="Note">
+                            <input className={inputCls} value={fs.data.note} onChange={(e) => fs.setData('note', e.target.value)} />
+                        </Field>
+                        <div className="flex items-end">
+                            <Button
+                                disabled={fs.processing || fs.data.montant === ''}
+                                onClick={() => fs.post(`/dossiers/${dossier.id}/feuilles-soins`, { preserveScroll: true, onSuccess: () => fs.reset('montant', 'note') })}
+                            >
+                                Ajouter
+                            </Button>
+                        </div>
+                    </div>
+                )}
+                {feuillesSoins.length === 0 ? (
+                    <Empty>Aucune feuille de soins remise.</Empty>
+                ) : (
+                    <ul className="divide-y text-sm">
+                        {feuillesSoins.map((f) => (
+                            <li key={f.id} className="flex flex-wrap items-center gap-3 py-2">
+                                <span className="w-24">{dateFr(f.remise_le)}</span>
+                                <b className="w-40">{mutuelles[f.organisme] ?? f.organisme}</b>
+                                <span className="flex-1">
+                                    {dh(f.montant)}
+                                    {f.note ? ` · ${f.note}` : ''}
+                                </span>
+                                {peut.finance ? (
+                                    <select
+                                        className={cn(inputCls, 'h-8 w-44')}
+                                        value={f.statut}
+                                        onChange={(e) => router.put(`/feuilles-soins/${f.id}`, { statut: e.target.value }, { preserveScroll: true })}
+                                    >
+                                        {Object.entries(statutsFeuilles).map(([k, v]) => (
+                                            <option key={k} value={k}>
+                                                {v}
+                                            </option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <Pill>{statutsFeuilles[f.statut] ?? f.statut}</Pill>
+                                )}
+                            </li>
+                        ))}
+                    </ul>
+                )}
+                <p className="mt-2 text-xs text-muted-foreground">Le patient suit ses feuilles de soins et leur remboursement dans « Mon espace ».</p>
+            </Box>
             <Box titre="Reçus">
                 {paiements.length === 0 ? (
                     <Empty>Aucun paiement.</Empty>
@@ -2586,8 +2676,111 @@ function Panoramique({ radios, dossier, peut }: Props) {
     );
 }
 
+/* ---------------- Mon espace patient ---------------- */
+function EspacePatient({ dossier, peut, messagesPatient = [], espaceMdp, typesMessages = {} }: Props) {
+    const p = dossier.patient;
+    const [mdp, setMdp] = useState<string | null>(null);
+    useEffect(
+        () =>
+            router.on('flash', (ev) => {
+                const m = (ev as CustomEvent).detail?.flash?.espace_mdp as string | undefined;
+                if (m) setMdp(m);
+            }),
+        [],
+    );
+    const form = useForm({ type: 'info', titre: '', texte: '' });
+    return (
+        <div className="grid gap-4 lg:grid-cols-[380px_1fr]">
+            <div className="flex flex-col gap-4">
+                {peut.espace && (
+                    <Box titre="Mot de passe « Mon espace »">
+                        <p className="text-sm text-muted-foreground">
+                            Avec ce mot de passe et son téléphone, le patient voit tout son dossier : soins, schéma dentaire, labo, paiements, mutuelle et
+                            messages.
+                        </p>
+                        <p className="mt-2 text-sm">
+                            État : <b>{espaceMdp ? 'mot de passe déjà créé' : 'pas encore de mot de passe'}</b>
+                        </p>
+                        {mdp && (
+                            <div className="mt-3 rounded-xl border-2 border-teal-500 bg-teal-50 p-3 text-center dark:bg-teal-950/30">
+                                <div className="text-xs text-muted-foreground">Mot de passe à donner au patient (affiché une seule fois)</div>
+                                <div className="my-1 font-mono text-3xl font-bold tracking-widest">{mdp}</div>
+                                <div className="text-xs text-muted-foreground">Le patient se connecte dans « Mon espace » avec son téléphone {p.telephone} et ce mot de passe.</div>
+                            </div>
+                        )}
+                        <Button
+                            className="mt-3"
+                            variant={espaceMdp ? 'outline' : 'default'}
+                            onClick={() =>
+                                (!espaceMdp || confirm('Créer un nouveau mot de passe ? L’ancien ne marchera plus.')) &&
+                                router.post(`/patients/${p.id}/espace-mot-de-passe`, {}, { preserveScroll: true })
+                            }
+                        >
+                            {espaceMdp ? 'Nouveau mot de passe' : 'Créer le mot de passe'}
+                        </Button>
+                    </Box>
+                )}
+                {peut.message && (
+                    <Box titre="Envoyer un message au patient">
+                        <div className="flex flex-col gap-3">
+                            <Field label="Type">
+                                <select className={inputCls} value={form.data.type} onChange={(e) => form.setData('type', e.target.value)}>
+                                    {Object.entries(typesMessages).map(([k, v]) => (
+                                        <option key={k} value={k}>
+                                            {v}
+                                        </option>
+                                    ))}
+                                </select>
+                            </Field>
+                            <Field label="Titre" error={form.errors.titre}>
+                                <input className={inputCls} value={form.data.titre} onChange={(e) => form.setData('titre', e.target.value)} placeholder="Ex. Contrôle de votre implant" />
+                            </Field>
+                            <Field label="Message" error={form.errors.texte}>
+                                <textarea className={textareaCls} maxLength={500} value={form.data.texte} onChange={(e) => form.setData('texte', e.target.value)} />
+                            </Field>
+                            <p className="text-xs text-muted-foreground">
+                                Le message apparaît dans « Mon espace ». Il part aussi par SMS si le patient a accepté les SMS.
+                            </p>
+                            <Button
+                                disabled={form.processing || !form.data.titre || !form.data.texte}
+                                onClick={() => form.post(`/patients/${p.id}/messages`, { preserveScroll: true, onSuccess: () => form.reset('titre', 'texte') })}
+                            >
+                                Envoyer
+                            </Button>
+                        </div>
+                    </Box>
+                )}
+            </div>
+            <Box titre={`Messages envoyés (${messagesPatient.length})`}>
+                {messagesPatient.length === 0 ? (
+                    <Empty>Aucun message pour le moment.</Empty>
+                ) : (
+                    <ul className="divide-y text-sm">
+                        {messagesPatient.map((m) => (
+                            <li key={m.id} className="py-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <b>{m.titre}</b>
+                                    <Pill>{typesMessages[m.type] ?? m.type}</Pill>
+                                    {m.sms_envoye && <Pill className="bg-sky-100 text-sky-800">SMS</Pill>}
+                                    <span className={cn('ml-auto text-xs', m.lu_le ? 'text-green-700' : 'text-muted-foreground')}>
+                                        {m.lu_le ? `Lu le ${dateHeure(m.lu_le)}` : 'Pas encore lu'}
+                                    </span>
+                                </div>
+                                <p className="mt-1">{m.texte}</p>
+                                <div className="text-xs text-muted-foreground">
+                                    {dateHeure(m.created_at)} · {m.envoye_par?.name ?? 'Automatique'}
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </Box>
+        </div>
+    );
+}
+
 /* ---------------- Identité ---------------- */
-function Identite({ dossier, peut, antecedentsListe }: Props) {
+function Identite({ dossier, peut, antecedentsListe, mutuelles = {} }: Props) {
     const p = dossier.patient;
     const s = (k: string) => (p[k] as string | null) ?? '';
     const form = useForm({
@@ -2606,8 +2799,10 @@ function Identite({ dossier, peut, antecedentsListe }: Props) {
         allergies: s('allergies'),
         traitements: s('traitements'),
         ancien_numero_papier: dossier.ancien_numero_papier ?? '',
+        mutuelle: s('mutuelle'),
+        mutuelle_numero: s('mutuelle_numero'),
     });
-    const champ = (k: Exclude<keyof typeof form.data, 'antecedents'>, label: string, type = 'text') => (
+    const champ = (k: Exclude<keyof typeof form.data, 'antecedents' | 'mutuelle'>, label: string, type = 'text') => (
         <Field label={label} error={form.errors[k]}>
             <input type={type} disabled={!peut.identite} className={inputCls} value={form.data[k]} onChange={(e) => form.setData(k, e.target.value)} />
         </Field>
@@ -2621,6 +2816,17 @@ function Identite({ dossier, peut, antecedentsListe }: Props) {
                 {champ('date_naissance', 'Date de naissance', 'date')}
                 {champ('cin', 'N° CIN')}
                 {champ('ancien_numero_papier', 'Ancien n° de dossier papier')}
+                <Field label="Mutuelle" error={form.errors.mutuelle}>
+                    <select disabled={!peut.identite} className={inputCls} value={form.data.mutuelle} onChange={(e) => form.setData('mutuelle', e.target.value)}>
+                        <option value="">—</option>
+                        {Object.entries(mutuelles).map(([k, v]) => (
+                            <option key={k} value={k}>
+                                {v}
+                            </option>
+                        ))}
+                    </select>
+                </Field>
+                {champ('mutuelle_numero', 'N° d’immatriculation (mutuelle)')}
                 {champ('telephone', 'Téléphone')}
                 {champ('email', 'E-mail')}
                 {champ('ville', 'Ville')}
