@@ -2,7 +2,7 @@ import { router, useForm } from '@inertiajs/react';
 import { Field, inputCls, Modal } from '@/components/cabinet/ui';
 import { Button } from '@/components/ui/button';
 
-type RdvMin = { id: number; debut: string; fin: string | null; mission: string; docteur_id?: number | null; patient: { nom_complet: string } };
+type RdvMin = { id: number; debut: string; fin: string | null; mission: string; docteur_id?: number | null; statut?: string; patient: { nom_complet: string } };
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const local = (iso: string) => {
@@ -19,6 +19,16 @@ export function ModifierRdv({ rdv, docteurs, onClose }: { rdv: RdvMin; docteurs?
     return (
         <Modal open onClose={onClose} titre={`Rendez-vous · ${rdv.patient.nom_complet}`}>
             <div className="flex flex-col gap-3">
+                {rdv.statut && ['absent', 'annule'].includes(rdv.statut) && (
+                    <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                        Ce rendez-vous est {rdv.statut === 'absent' ? 'marqué absent' : 'annulé'} : en enregistrant, il revient dans l’agenda (reprogrammé).
+                    </div>
+                )}
+                {rdv.statut && ['termine', 'en_cours'].includes(rdv.statut) && (
+                    <div className="rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700">
+                        Rendez-vous déjà passé : vous pouvez corriger la mission, l’heure ou le docteur.
+                    </div>
+                )}
                 <Field label="Mission" error={form.errors.mission}>
                     <input className={inputCls} value={form.data.mission} onChange={(e) => form.setData('mission', e.target.value)} />
                 </Field>
@@ -41,7 +51,14 @@ export function ModifierRdv({ rdv, docteurs, onClose }: { rdv: RdvMin; docteurs?
                         <input type="time" step={900} className={inputCls} value={form.data.heure} onChange={(e) => form.setData('heure', e.target.value)} />
                     </Field>
                     <Field label="Durée (min)">
-                        <input type="number" min={10} step={5} className={inputCls} value={form.data.duree} onChange={(e) => form.setData('duree', Number(e.target.value))} />
+                        <input
+                            type="number"
+                            min={10}
+                            step={5}
+                            className={inputCls}
+                            value={form.data.duree}
+                            onChange={(e) => form.setData('duree', Number(e.target.value))}
+                        />
                     </Field>
                 </div>
                 {form.errors.heure && (
@@ -50,13 +67,20 @@ export function ModifierRdv({ rdv, docteurs, onClose }: { rdv: RdvMin; docteurs?
                     </label>
                 )}
                 <div className="flex flex-wrap justify-between gap-2">
-                    <Button
-                        variant="outline"
-                        className="text-red-600"
-                        onClick={() => confirm('Annuler ce rendez-vous ?') && router.post(`/rendez-vous/${rdv.id}/annuler`, {}, { preserveScroll: true, onSuccess: onClose })}
-                    >
-                        Annuler le rendez-vous
-                    </Button>
+                    {!rdv.statut || ['planifie', 'arrive'].includes(rdv.statut) ? (
+                        <Button
+                            variant="outline"
+                            className="text-red-600"
+                            onClick={() =>
+                                confirm('Annuler ce rendez-vous ?') &&
+                                router.post(`/rendez-vous/${rdv.id}/annuler`, {}, { preserveScroll: true, onSuccess: onClose })
+                            }
+                        >
+                            Annuler le rendez-vous
+                        </Button>
+                    ) : (
+                        <span />
+                    )}
                     <Button disabled={form.processing} onClick={() => form.put(`/rendez-vous/${rdv.id}`, { preserveScroll: true, onSuccess: onClose })}>
                         Enregistrer
                     </Button>

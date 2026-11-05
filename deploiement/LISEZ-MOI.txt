@@ -1,0 +1,50 @@
+﻿WE SMILE - INSTALLATION SUR LE MINI PC (SERVEUR DU CABINET)
+============================================================
+
+AVANT : installer sur le mini PC (connexion Internet necessaire)
+  1. XAMPP 8.5 (PHP 8.5)  -> dans C:\xampp          https://www.apachefriends.org/download.html
+  2. Composer             -> choisir C:\xampp\php\php.exe   https://getcomposer.org/download/
+  3. Node.js (version LTS)                           https://nodejs.org
+  4. Git                                             https://git-scm.com/download/win
+  Ne demarrez rien dans le XAMPP Control Panel : le script s'en occupe.
+
+ETAPE 1 - sur le PC Dell (le soir, quand personne n'utilise la plateforme)
+  - Demarrez MySQL dans le XAMPP Control Panel.
+  - Branchez une cle USB.
+  - Double-clic sur 1-EXPORTER-sur-PC-Dell.bat
+  -> la cle contient le dossier wesmile-transfert (plateforme + documents + base).
+
+AVEC GIT (au lieu de copier le code par la cle USB) - possible
+  - Le code peut venir de GitHub, mais PAS le .env, la base ni les documents
+    patients (ils ne doivent jamais aller sur GitHub) : faites quand meme l'etape 1.
+  - Sur le PC Dell : git add .  /  git commit -m "..."  /  git push
+  - Sur le mini PC (PowerShell) :  git clone <adresse du depot> C:\wesmile
+    (le dossier doit s'appeler exactement C:\wesmile)
+  - Cle USB branchee, double-clic sur C:\wesmile\deploiement\2-INSTALLER-sur-mini-PC.bat
+    -> il prend le .env, la base et les documents sur la cle.
+
+ETAPE 2 - sur le mini PC
+  - Branchez la cle USB.
+  - Ouvrez wesmile-transfert\wesmile\deploiement
+  - Double-clic sur 2-INSTALLER-sur-mini-PC.bat (accepter la fenetre administrateur)
+  -> a la fin, l'adresse de la plateforme s'affiche (ex. http://192.168.100.50).
+
+APRES
+  - Reservez l'adresse IP du mini PC dans le routeur.
+  - Supprimez le dossier wesmile-transfert de la cle USB.
+  - Changez l'adresse sur tous les PC, la borne, la TV et la tablette.
+  - N'utilisez plus la plateforme sur le PC Dell.
+
+TOUS LES JOURS (automatique)
+  - Rappels SMS / messages de suivi : tache Windows "Wesmile\Planificateur".
+  - Sauvegarde a 20h30 : C:\Sauvegardes-Wesmile (base + documents + .env).
+  - Disque externe : nommez-le WESMILE ; branche, il recoit une copie.
+    Une fois par semaine : branchez-le, double-clic sur SAUVEGARDER-MAINTENANT.bat,
+    puis rangez-le hors du cabinet.
+
+MISE A JOUR (apres une modification envoyee sur GitHub)
+  - Sur le mini PC : double-clic sur METTRE-A-JOUR.bat (le soir).
+
+NE JAMAIS LANCER SUR LE MINI PC
+  php artisan key:generate   (les donnees chiffrees deviendraient illisibles)
+  php artisan migrate:fresh / db:wipe / composer update

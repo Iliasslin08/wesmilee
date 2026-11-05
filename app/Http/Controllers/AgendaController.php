@@ -224,7 +224,9 @@ class AgendaController extends Controller
 
     public function modifier(Request $request, RendezVous $rdv): RedirectResponse
     {
-        $this->autoriser($request, $rdv);
+        // Un rendez-vous reste toujours modifiable (même terminé, absent ou annulé) : seule l'autorisation compte
+        $u = $request->user();
+        abort_unless($u->hasRole(\App\Enums\Role::Reception) || $rdv->docteur_id === $u->id, 403);
         $data = $request->validate([
             'date' => ['required', 'date'],
             'heure' => ['required', 'date_format:H:i'],
@@ -237,18 +239,25 @@ class AgendaController extends Controller
         $debut = Carbon::parse($data['date'].' '.$data['heure']);
         $fin = $debut->copy()->addMinutes((int) $data['duree']);
 
-        if (empty($data['forcer'])) {
+        $passe = in_array($rdv->statut, [StatutRdv::Termine, StatutRdv::EnCours], true);
+        if (empty($data['forcer']) && ! $passe) {
             $conflit = RendezVous::where('docteur_id', $docteurId)->actifs()->whereKeyNot($rdv->id)
                 ->where('debut', '<', $fin)->where('fin', '>', $debut)->exists();
             if ($conflit) {
                 throw ValidationException::withMessages(['heure' => 'Ce créneau est déjà pris pour ce docteur.']);
             }
         }
-        $rdv->update(['debut' => $debut, 'fin' => $fin, 'mission' => $data['mission'], 'docteur_id' => $docteurId]);
+        $maj = ['debut' => $debut, 'fin' => $fin, 'mission' => $data['mission'], 'docteur_id' => $docteurId];
+        // absent / annulé puis reprogrammé : il revient dans l'agenda
+        $reprogramme = in_array($rdv->statut, [StatutRdv::Absent, StatutRdv::Annule], true);
+        if ($reprogramme) {
+            $maj += ['statut' => StatutRdv::Planifie, 'arrive_le' => null, 'numero_appel' => null, 'appele_le' => null];
+        }
+        $rdv->update($maj);
         if ($rdv->acte_id) {
             \App\Models\CommandeLabo::where('acte_id', $rdv->acte_id)->whereNotIn('statut', ['pose'])->update(['date_pose' => $debut->toDateString()]);
         }
-        $this->ok("Rendez-vous déplacé au {$debut->translatedFormat('d/m à H:i')}.");
+        $this->ok($passe ? 'Rendez-vous corrigé.' : ($reprogramme ? "Rendez-vous reprogrammé au {$debut->translatedFormat('d/m à H:i')}." : "Rendez-vous modifié : {$debut->translatedFormat('d/m à H:i')}."));
 
         return back();
     }

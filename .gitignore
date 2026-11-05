@@ -58,3 +58,9 @@ yarn-error.log
 /storage/app/public/*
 !/storage/app/public/.gitignore
 /storage/logs/*.log
+
+# ---- Scans des dossiers papier et listes de rendez-vous : donnees patients ----
+/Dossier patient/
+/rendezvous/
+/.env.*
+!/.env.example

@@ -27,7 +27,33 @@ type Rdv = {
     visite?: 'premiere' | 'premiere_sans_rdv' | 'suivi';
     autres_rdv?: { id: number; debut: string; mission: string; docteur: string | null }[];
     seance_num?: number;
+    badge?: string;
+    ecart?: number;
 };
+
+/** Badge d'arrivée (ordre de passage intelligent) : à l'heure, en avance, en retard, urgence, sans RDV, pas arrivé. */
+const BADGES: Record<string, [string, string]> = {
+    urgence: ['Urgence', 'bg-red-100 text-red-700'],
+    sans_rdv: ['Sans RDV', 'bg-slate-100 text-slate-700'],
+    avance: ['En avance', 'bg-blue-100 text-blue-800'],
+    heure: ["À l'heure", 'bg-green-100 text-green-800'],
+    retard: ['Retard', 'bg-orange-100 text-orange-800'],
+    pas_arrive: ['Pas encore arrivé', 'bg-amber-100 text-amber-800'],
+    absent_probable: ['Absent ?', 'bg-red-100 text-red-700'],
+};
+function BadgeArrivee({ badge, ecart }: { badge?: string; ecart?: number }) {
+    const b = badge ? BADGES[badge] : undefined;
+    if (!b) return null;
+    const e = ecart ?? 0;
+    const detail =
+        badge === 'avance' ? ` +${-e} min` : badge === 'retard' ? ` −${e} min` : ['pas_arrive', 'absent_probable'].includes(badge!) ? ` · ${e} min` : '';
+    return (
+        <Pill className={b[1]}>
+            {b[0]}
+            {detail}
+        </Pill>
+    );
+}
 
 /** Les 3 types de patients : 1re consultation sans RDV, 1re consultation sur RDV (téléphone), suivi (séance n° X). */
 /** Le patient est venu aujourd'hui mais a aussi un RDV plus tard (ex. venu en urgence) : on peut le supprimer. */
@@ -72,7 +98,9 @@ type Docteur = {
     etat_depuis: string | null;
     salle: string | null;
     en_seance: string | null;
-    en_attente: { id: number; numero_appel: number; urgence: boolean; patient: Patient }[];
+    en_attente: { id: number; numero_appel: number; urgence: boolean; patient: Patient; badge?: string; ecart?: number; attente_estimee?: number | null }[];
+    retard_min?: number;
+    suggestions?: { id: number; numero_appel: number | null; patient: string; badge: string; debut: string; sans_rdv: boolean }[];
     taches_principales?: string | null;
     fait_consultation?: boolean;
     duree_rdv?: number | null;
@@ -106,8 +134,37 @@ export default function SalleAttente({ rdvs, docteurs }: { rdvs: Rdv[]; docteurs
         rdvs.filter((r) => ['termine', 'absent'].includes(r.statut) && !vus.has(r.patient.id)).sort((a, b) => b.debut.localeCompare(a.debut)),
     );
     const [voirArchive, setVoirArchive] = useState(false);
+    // Recherche dans les rendez-vous à venir : nom, téléphone, n° de dossier, acte ou docteur
+    const [cherche, setCherche] = useState('');
+    const norm = (v: unknown) =>
+        String(v ?? '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase();
+    const mots = norm(cherche).split(/\s+/).filter(Boolean);
+    const aVenirVus = mots.length
+        ? aVenir.filter((r) => {
+              const texte = norm(
+                  [
+                      r.patient.nom_complet,
+                      r.patient.telephone,
+                      String(r.patient.telephone ?? '').replace(/\D/g, ''),
+                      r.patient.dossier?.numero,
+                      r.mission,
+                      r.docteur?.name,
+                  ].join(' '),
+              );
+              return mots.every((m) => texte.includes(m));
+          })
+        : aVenir;
 
     const post = (url: string, data = {}) => router.post(url, data, { preserveScroll: true });
+    // attente estimée de chaque patient (calculée par docteur côté serveur)
+    const estimee = new Map<number, number>();
+    docteurs.forEach((d) =>
+        d.en_attente.forEach((r, i) => r.attente_estimee != null && estimee.set(r.id, i === 0 && r.attente_estimee === 0 ? 0 : r.attente_estimee)),
+    );
+    const libres = docteurs.filter((d) => d.suggestions && d.suggestions.length > 0);
 
     return (
         <Page>
@@ -136,6 +193,29 @@ export default function SalleAttente({ rdvs, docteurs }: { rdvs: Rdv[]; docteurs
                     {fiches} nouvelle(s) fiche(s) remplie(s) sur la tablette : cliquez pour vérifier et créer le dossier.
                 </Link>
             )}
+
+            {libres.map((d) => (
+                <div
+                    key={d.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border-2 border-green-500 bg-green-50 px-4 py-3 text-green-900 dark:bg-green-950/40 dark:text-green-100"
+                >
+                    <span>
+                        🟢 <b>{d.name} est libre</b> et son prochain patient n’est pas encore dû. Prendre maintenant :
+                    </span>
+                    <span className="flex flex-wrap gap-2">
+                        {d.suggestions!.map((s) => (
+                            <Button
+                                key={s.id}
+                                size="sm"
+                                variant={s.sans_rdv ? 'outline' : 'default'}
+                                onClick={() => post(`/rendez-vous/${s.id}/envoyer`, { docteur_id: d.id })}
+                            >
+                                {s.patient} · {s.sans_rdv ? 'sans RDV' : `en avance (RDV ${heure(s.debut)})`}
+                            </Button>
+                        ))}
+                    </span>
+                </div>
+            ))}
 
             <div className="grid gap-4 xl:grid-cols-[1fr_420px]">
                 <div className="flex flex-col gap-4">
@@ -172,16 +252,21 @@ export default function SalleAttente({ rdvs, docteurs }: { rdvs: Rdv[]; docteurs
                                         <div className="min-w-48 flex-1">
                                             <div className="flex flex-wrap items-center gap-2">
                                                 <b>{r.patient.nom_complet}</b>
-                                                {r.urgence && (
-                                                    <Pill className="bg-red-100 text-red-700">
-                                                        <AlertTriangle className="size-3" /> Urgence
-                                                    </Pill>
+                                                {r.badge ? (
+                                                    <BadgeArrivee badge={r.badge} ecart={r.ecart} />
+                                                ) : (
+                                                    r.urgence && (
+                                                        <Pill className="bg-red-100 text-red-700">
+                                                            <AlertTriangle className="size-3" /> Urgence
+                                                        </Pill>
+                                                    )
                                                 )}
                                                 <TypeVisite r={r} />
                                                 {r.patient.allergies && <Pill className="bg-red-50 text-red-700">Allergie</Pill>}
                                             </div>
                                             <div className="text-sm text-muted-foreground">
-                                                {r.mission} · attend depuis {depuis(r.arrive_le)}
+                                                {r.mission} · {r.sans_rdv ? '' : `RDV ${heure(r.debut)} · `}attend depuis {depuis(r.arrive_le)}
+                                                {estimee.has(r.id) && ` · passe dans ≈ ${estimee.get(r.id)} min`}
                                             </div>
                                             <AutresRdv r={r} />
                                         </div>
@@ -209,13 +294,32 @@ export default function SalleAttente({ rdvs, docteurs }: { rdvs: Rdv[]; docteurs
                         )}
                     </Box>
 
-                    <Box titre="Rendez-vous à venir aujourd'hui">
-                        {aVenir.length === 0 ? (
-                            <Empty>Aucun autre rendez-vous prévu.</Empty>
+                    <Box
+                        titre={
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span>Rendez-vous à venir aujourd'hui ({mots.length ? `${aVenirVus.length} / ${aVenir.length}` : aVenir.length})</span>
+                                <input
+                                    type="search"
+                                    className={cn(inputCls, 'w-64 font-normal')}
+                                    placeholder="Rechercher : nom, téléphone, n° dossier…"
+                                    value={cherche}
+                                    onChange={(e) => setCherche(e.target.value)}
+                                />
+                            </div>
+                        }
+                    >
+                        {aVenirVus.length === 0 ? (
+                            <Empty>{mots.length ? 'Aucun rendez-vous ne correspond à la recherche.' : 'Aucun autre rendez-vous prévu.'}</Empty>
                         ) : (
                             <ul className="divide-y">
-                                {aVenir.map((r) => (
-                                    <li key={r.id} className="flex flex-wrap items-center gap-3 py-3">
+                                {aVenirVus.map((r) => (
+                                    <li
+                                        key={r.id}
+                                        className={cn(
+                                            'flex flex-wrap items-center gap-3 py-3',
+                                            r.badge === 'absent_probable' && 'rounded-lg bg-red-50 px-2 dark:bg-red-950/30',
+                                        )}
+                                    >
                                         <span className="w-14 font-bold text-teal-900 dark:text-teal-200">{heure(r.debut)}</span>
                                         <div className="min-w-48 flex-1">
                                             <div className="flex flex-wrap items-center gap-2">
@@ -226,11 +330,20 @@ export default function SalleAttente({ rdvs, docteurs }: { rdvs: Rdv[]; docteurs
                                                     </Pill>
                                                 )}
                                                 <TypeVisite r={r} />
+                                                <BadgeArrivee badge={r.badge} ecart={r.ecart} />
                                                 {r.patient.fiche_a_completer && <FicheACompleter patientId={r.patient.id} />}
                                                 {!r.patient.fiche_a_completer && !r.patient.consentement_le && <Consentement patientId={r.patient.id} bouton />}
                                             </div>
                                             <div className="text-sm text-muted-foreground">
                                                 {r.mission} · {r.docteur?.name}
+                                                {r.badge && r.patient.telephone && (
+                                                    <>
+                                                        {' · '}
+                                                        <a className="font-semibold text-primary underline" href={`tel:${r.patient.telephone}`}>
+                                                            📞 {r.patient.telephone}
+                                                        </a>
+                                                    </>
+                                                )}
                                             </div>
                                         </div>
                                         <Button variant="outline" size="sm" onClick={() => post(`/rendez-vous/${r.id}/absent`)}>
@@ -318,7 +431,26 @@ export default function SalleAttente({ rdvs, docteurs }: { rdvs: Rdv[]; docteurs
                                             {d.etat_depuis ? ` · ${depuis(d.etat_depuis)}` : ''}
                                         </Pill>
                                     </div>
-                                    {d.en_seance && <div className="mt-2 text-sm">En séance : {d.en_seance}</div>}
+                                    {d.en_seance && (
+                                        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+                                            En séance : {d.en_seance}
+                                            {(d.retard_min ?? 0) > 0 && <Pill className="bg-red-100 text-red-700">⏱ +{d.retard_min} min</Pill>}
+                                        </div>
+                                    )}
+                                    {d.en_attente.length > 0 && !!d.en_attente[0].badge && (
+                                        <ol className="mt-2 flex flex-col gap-1 text-xs">
+                                            {d.en_attente.slice(0, 4).map((r, i) => (
+                                                <li key={r.id} className="flex items-center gap-2">
+                                                    <span className="w-4 font-bold text-primary">{i + 1}.</span>
+                                                    <span className="flex-1 truncate">
+                                                        N° {r.numero_appel} · {r.patient.nom_complet}
+                                                        {r.attente_estimee != null && ` · ≈ ${r.attente_estimee} min`}
+                                                    </span>
+                                                    <BadgeArrivee badge={r.badge} ecart={r.ecart} />
+                                                </li>
+                                            ))}
+                                        </ol>
+                                    )}
                                     {d.seance_depuis && (Date.now() - new Date(d.seance_depuis).getTime()) / 60000 > seanceMax && (
                                         <div className="mt-2 flex items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-800 dark:bg-red-950/40 dark:text-red-200">
                                             <AlertTriangle className="size-3.5" /> Séance ouverte depuis {depuis(d.seance_depuis)} : oubli ?

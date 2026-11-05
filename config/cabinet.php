@@ -24,4 +24,11 @@ return [
     'carte_url' => env('CARTE_URL', env('APP_URL')),
     // false = mode local en attendant la CNDP : pas de QR code, pas de « Mon espace » patient
     'espace_patient' => (bool) env('ESPACE_PATIENT', true),
+    // Ordre de passage intelligent (badges avance/retard, attente estimée, salle libre). false = ancien ordre
+    'ordre' => [
+        'actif' => (bool) env('ORDRE_INTELLIGENT', true),
+        'tolerance' => (int) env('ORDRE_TOLERANCE', 10),       // ± X min = « à l'heure »
+        'retard_garde' => (int) env('ORDRE_RETARD_GARDE', 15), // retard qui garde sa place
+        'absent' => (int) env('ORDRE_ABSENT', 45),             // « Absent ? » après X min
+    ],
 ];

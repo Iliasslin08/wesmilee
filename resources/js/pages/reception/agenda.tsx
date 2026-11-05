@@ -313,11 +313,9 @@ function Tableau({ rdvs, avecDate, onModifier }: { rdvs: Rdv[]; avecDate: boolea
                                                     Dossier
                                                 </Link>
                                             )}
-                                            {['planifie', 'arrive'].includes(r.statut) && (
-                                                <button className="text-xs text-primary underline" onClick={() => onModifier(r)}>
-                                                    Modifier / annuler
-                                                </button>
-                                            )}
+                                            <button className="text-xs text-primary underline" onClick={() => onModifier(r)}>
+                                                {['planifie', 'arrive'].includes(r.statut) ? 'Modifier / annuler' : 'Modifier'}
+                                            </button>
                                             <SupprimerRdv rdv={r} />
                                         </td>
                                     </tr>
@@ -408,11 +406,9 @@ function ParDocteur({
                                         </div>
                                         <div className="text-muted-foreground">{r.mission}</div>
                                         <div className="mt-1.5 flex items-center gap-3">
-                                            {['planifie', 'arrive'].includes(r.statut) && (
-                                                <button className="text-xs text-primary underline" onClick={() => onModifier(r)}>
-                                                    Modifier / annuler
-                                                </button>
-                                            )}
+                                            <button className="text-xs text-primary underline" onClick={() => onModifier(r)}>
+                                                {['planifie', 'arrive'].includes(r.statut) ? 'Modifier / annuler' : 'Modifier'}
+                                            </button>
                                             <SupprimerRdv rdv={r} />
                                         </div>
                                     </li>

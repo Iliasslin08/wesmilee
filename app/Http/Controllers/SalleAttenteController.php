@@ -20,6 +20,11 @@ class SalleAttenteController extends Controller
             ->with(['patient:id,nom,prenom,ville,telephone,allergies,fiche_a_completer,consentement_le', 'patient.dossier:id,patient_id,numero', 'docteur:id,name'])
             ->orderByDesc('urgence')->orderBy('debut')->get();
         self::typeVisite($rdvs);
+        $ordre = \App\Support\OrdrePassage::actif();
+        if ($ordre) {
+            $rdvs = \App\Support\OrdrePassage::preparer($rdvs);
+        }
+        $sansDocteur = $rdvs->where('statut', StatutRdv::Arrive)->whereNull('docteur_id')->reject(fn ($r) => $r->patient->fiche_a_completer)->values();
         // Patient venu aujourd'hui (urgence, sans RDV…) qui a AUSSI un RDV plus tard : on le signale pour pouvoir le supprimer
         $futurs = RendezVous::whereIn('patient_id', $rdvs->pluck('patient_id'))->where('debut', '>', now()->endOfDay())
             ->where('statut', StatutRdv::Planifie->value)->with('docteur:id,name')->orderBy('debut')->get()->groupBy('patient_id');
@@ -28,15 +33,20 @@ class SalleAttenteController extends Controller
         }
 
         $docteurs = User::docteurs()->get(['id', 'name', 'specialite', 'etat', 'etat_depuis', 'salle', 'couleur', 'taches_principales', 'fait_consultation', 'duree_rdv'])
-            ->map(function (User $d) use ($rdvs) {
+            ->map(function (User $d) use ($rdvs, $ordre, $sansDocteur) {
                 $mesRdvs = $rdvs->where('docteur_id', $d->id);
+                $file = $mesRdvs->where('statut', StatutRdv::Arrive)->reject(fn ($r) => $r->patient->fiche_a_completer)->values();
+                $seanceDepuis = \App\Models\Seance::where('docteur_id', $d->id)->whereNull('fin')->min('debut');
+                $infos = $ordre
+                    ? \App\Support\OrdrePassage::file($file, $mesRdvs->firstWhere('statut', StatutRdv::EnCours), $seanceDepuis, $sansDocteur, $d->etat?->value === 'pret')
+                    : ['retard_min' => 0, 'suggestions' => []];
 
-                return $d->toArray() + [
+                return $d->toArray() + $infos + [
                     'etat_label' => $d->etat?->label(),
                     'en_seance' => $mesRdvs->firstWhere('statut', StatutRdv::EnCours)?->patient?->nom_complet,
                     // prêts à partir chez le docteur : arrivés ET fiche confirmée
-                    'en_attente' => $mesRdvs->where('statut', StatutRdv::Arrive)->reject(fn ($r) => $r->patient->fiche_a_completer)->values()->map->only(['id', 'numero_appel', 'urgence', 'patient']),
-                    'seance_depuis' => \App\Models\Seance::where('docteur_id', $d->id)->whereNull('fin')->min('debut'),
+                    'en_attente' => $file->map->only(['id', 'numero_appel', 'urgence', 'patient', 'debut', 'badge', 'ecart', 'attente_estimee']),
+                    'seance_depuis' => $seanceDepuis,
                 ];
             });
 
@@ -44,6 +54,7 @@ class SalleAttenteController extends Controller
             'rdvs' => $rdvs,
             'docteurs' => $docteurs,
             'maintenant' => now()->toIso8601String(),
+            'ordreIntelligent' => $ordre,
         ]);
     }
 

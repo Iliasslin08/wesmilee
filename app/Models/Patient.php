@@ -36,7 +36,10 @@ class Patient extends Model
 
     public function getNomCompletAttribute(): string
     {
-        return mb_strtoupper($this->nom).' '.$this->prenom;
+        // « Belfki Khadija » au lieu de « BELFKI Khadija » (affichage seulement, la base ne change pas)
+        $t = fn ($v) => mb_convert_case(mb_strtolower(trim((string) $v)), MB_CASE_TITLE, 'UTF-8');
+
+        return trim($t($this->nom).' '.$t($this->prenom));
     }
 
     public function getAgeAttribute(): ?int
